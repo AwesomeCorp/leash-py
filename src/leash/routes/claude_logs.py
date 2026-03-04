@@ -26,11 +26,15 @@ def _serialize(obj: Any) -> Any:
     import datetime
 
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {_to_camel(k): _serialize(v) for k, v in dataclasses.asdict(obj).items()}
+        # Walk fields manually to preserve nested dataclass handling
+        result = {}
+        for f in dataclasses.fields(obj):
+            result[_to_camel(f.name)] = _serialize(getattr(obj, f.name))
+        return result
     if isinstance(obj, list):
         return [_serialize(item) for item in obj]
     if isinstance(obj, dict):
-        return {k: _serialize(v) for k, v in obj.items()}
+        return {_to_camel(k): _serialize(v) for k, v in obj.items()}
     if isinstance(obj, datetime.datetime):
         return obj.isoformat()
     return obj

@@ -29,7 +29,7 @@ def create_default_configuration() -> Configuration:
 
     return Configuration(
         hook_handlers={
-            "PermissionRequest": HookEventConfig(
+            "PreToolUse": HookEventConfig(
                 enabled=True,
                 handlers=[
                     HandlerConfig(
@@ -92,24 +92,10 @@ def create_default_configuration() -> Configuration:
                         auto_approve=True,
                         config={"autoApproveRegistered": True},
                     ),
-                ],
-            ),
-            "PreToolUse": HookEventConfig(
-                enabled=True,
-                handlers=[
-                    HandlerConfig(
-                        name="pre-tool-analyzer",
-                        matcher="Bash|Write|Edit",
-                        mode="llm-analysis",
-                        prompt_template=f"{pd}/pre-tool-use-prompt.txt",
-                        threshold=80,
-                        auto_approve=True,
-                    ),
                     HandlerConfig(
                         name="pre-tool-logger",
                         matcher="*",
                         mode="log-only",
-                        client="claude",
                         config={"logLevel": "info"},
                     ),
                     HandlerConfig(

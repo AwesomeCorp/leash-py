@@ -19,14 +19,5 @@ class HookHandler(Protocol):
         config: HandlerConfig,
         session_context: str,
     ) -> HookOutput:
-        """Process a hook event and return an analysis result.
-
-        Args:
-            input: The hook event data from Claude Code / Copilot.
-            config: The matched handler configuration.
-            session_context: Accumulated session context string.
-
-        Returns:
-            A ``HookOutput`` with the handler's analysis / decision.
-        """
+        """Process a hook event and return an analysis result."""
         ...

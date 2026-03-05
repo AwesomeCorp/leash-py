@@ -17,6 +17,7 @@ class NotificationLevel(str, Enum):
 class TrayDecision(str, Enum):
     APPROVE = "approve"
     DENY = "deny"
+    IGNORE = "ignore"
 
 
 class NotificationInfo(BaseModel):
@@ -38,6 +39,7 @@ class NotificationInfo(BaseModel):
     tool_input_summary: str | None = None
     command_preview: str | None = None
     timeout_seconds: int | None = None
+    sound: bool = False
     level: NotificationLevel = NotificationLevel.INFO
 
 

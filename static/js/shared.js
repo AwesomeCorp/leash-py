@@ -294,6 +294,7 @@ function getDecisionClass(decision) {
         case 'tray-approved': return 'approved';
         case 'denied':
         case 'tray-denied': return 'denied';
+        case 'tray-ignored': return 'logged';
         case 'tray-timeout': return 'logged';
         case 'logged':
         case 'no-handler': return 'logged';
@@ -307,6 +308,7 @@ function getDecisionLabel(decision) {
         case 'denied': return 'Denied';
         case 'tray-approved': return 'Tray Approved';
         case 'tray-denied': return 'Tray Denied';
+        case 'tray-ignored': return 'Tray Ignored';
         case 'tray-timeout': return 'Tray Timeout';
         case 'logged':
         case 'no-handler': return 'Logged';

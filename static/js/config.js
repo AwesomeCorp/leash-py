@@ -32,6 +32,25 @@ const HOOK_EVENT_DESCRIPTIONS = {
     'Stop': 'Fires when a Claude session ends. Used for session cleanup.'
 };
 
+// Which harnesses support each hook event
+const HOOK_EVENT_HARNESSES = {
+    'PreToolUse': ['claude', 'copilot'],
+    'PostToolUse': ['claude', 'copilot'],
+    'PostToolUseFailure': ['claude'],
+    'UserPromptSubmit': ['claude'],
+    'PermissionRequest': ['claude'],
+    'Stop': ['claude'],
+};
+
+function getHarnessIcons(eventType) {
+    const harnesses = HOOK_EVENT_HARNESSES[eventType] || ['claude'];
+    return harnesses.map(function(h) {
+        if (h === 'claude') return '<span class="badge-claude" style="font-size:0.6em;" title="Claude Code">CL</span>';
+        if (h === 'copilot') return '<span class="badge-copilot" style="font-size:0.6em;" title="Copilot CLI">CP</span>';
+        return '<span style="font-size:0.6em;">' + h + '</span>';
+    }).join(' ');
+}
+
 const MODE_BADGE_COLORS = {
     'llm-analysis': 'var(--color-info)',
     'log-only': 'var(--text-faint)',
@@ -407,6 +426,17 @@ function renderConfig(config) {
                     value="${config.tray?.interactiveTimeoutSeconds || 10}" min="5" max="30"
                     data-path="tray.interactiveTimeoutSeconds" aria-label="Interactive timeout">
             </div>
+            <div class="config-field">
+                <label class="config-label" for="cfg-tray-sound">
+                    Notification Sound
+                    <small>Play a sound when tray notifications appear</small>
+                </label>
+                <select id="cfg-tray-sound" class="config-input"
+                    data-path="tray.sound" data-type="bool" aria-label="Notification sound">
+                    <option value="false" ${config.tray?.sound !== true ? 'selected' : ''}>Off</option>
+                    <option value="true" ${config.tray?.sound === true ? 'selected' : ''}>On</option>
+                </select>
+            </div>
         </div>
 
         <div class="config-section">
@@ -629,7 +659,7 @@ function renderHookHandlers() {
         <div class="hook-event-card" data-event="${escapeAttr(eventType)}">
             <div class="hook-event-header">
                 <div class="hook-event-title">
-                    <h4>${escapeHtml(eventType)}${isCustom ? ' <span style="font-size:0.65em;font-weight:400;color:var(--text-muted);">(custom)</span>' : ''}</h4>
+                    <h4>${escapeHtml(eventType)} ${getHarnessIcons(eventType)}${isCustom ? ' <span style="font-size:0.65em;font-weight:400;color:var(--text-muted);">(custom)</span>' : ''}</h4>
                     <label class="hook-event-toggle">
                         <input type="checkbox" ${enabled ? 'checked' : ''}
                             onchange="toggleHookEvent('${escapeAttr(eventType)}', this.checked)"

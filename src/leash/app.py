@@ -220,7 +220,19 @@ async def lifespan(app: FastAPI):
     logger.info("Leash shutting down")
 
     async def _graceful_cleanup() -> None:
-        # Stop tray first (unblocks its message loop thread)
+        # Uninstall hooks so they don't point to a dead server
+        try:
+            hook_installer.uninstall()
+            logger.debug("Claude hooks uninstalled")
+        except Exception:
+            logger.debug("Error uninstalling Claude hooks during shutdown", exc_info=True)
+        try:
+            copilot_hook_installer.uninstall_user()
+            logger.debug("Copilot hooks uninstalled")
+        except Exception:
+            logger.debug("Error uninstalling Copilot hooks during shutdown", exc_info=True)
+
+        # Stop tray (unblocks its message loop thread)
         try:
             tray_svc.stop()
         except Exception:

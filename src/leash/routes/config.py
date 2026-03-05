@@ -22,6 +22,10 @@ def _get_hook_installer(request: Request) -> Any:
     return getattr(request.app.state, "hook_installer", None)
 
 
+def _get_copilot_hook_installer(request: Request) -> Any:
+    return getattr(request.app.state, "copilot_hook_installer", None)
+
+
 @router.get("/api/config")
 async def get_config(request: Request) -> JSONResponse:
     """Return the current configuration."""
@@ -59,13 +63,20 @@ async def update_config(request: Request) -> JSONResponse:
         await config_manager.update(config)
         logger.info("Configuration updated via API")
 
-        # Auto-reinstall hooks after config change
+        # Auto-reinstall hooks after config change (both Claude and Copilot)
         hook_installer = _get_hook_installer(request)
         if hook_installer is not None:
             try:
                 hook_installer.install()
             except Exception as hook_exc:
-                logger.warning("Failed to reinstall hooks after config update: %s", hook_exc)
+                logger.warning("Failed to reinstall Claude hooks after config update: %s", hook_exc)
+
+        copilot_installer = _get_copilot_hook_installer(request)
+        if copilot_installer is not None:
+            try:
+                copilot_installer.install_user()
+            except Exception as hook_exc:
+                logger.warning("Failed to reinstall Copilot hooks after config update: %s", hook_exc)
 
         return JSONResponse(content={"message": "Configuration updated successfully"})
     except ConfigurationException as exc:

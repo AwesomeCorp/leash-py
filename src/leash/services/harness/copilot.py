@@ -85,11 +85,18 @@ class CopilotHarnessClient:
         )
 
     def format_response(self, hook_event: str, output: HookOutput) -> dict[str, Any]:
-        """Format a HookOutput into the JSON structure Copilot expects."""
+        """Format a HookOutput into the JSON structure Copilot expects.
+
+        permissionDecision: allow | deny | ask
+        """
         normalized = self.normalize_event_name(hook_event)
         if normalized == "PreToolUse":
-            # Copilot CLI only supports "allow" or "deny" (no "ask")
-            if output.auto_approve:
+            # Tray decisions override score-based logic
+            if output.tray_decision == "tray-denied":
+                decision = "deny"
+            elif output.tray_decision in ("tray-ignored", "tray-timeout"):
+                decision = "ask"
+            elif output.tray_decision == "tray-approved" or output.auto_approve:
                 decision = "allow"
             elif output.safety_score >= output.threshold:
                 decision = "allow"
@@ -97,9 +104,9 @@ class CopilotHarnessClient:
                 decision = "deny"
 
             response: dict[str, Any] = {"permissionDecision": decision}
-            if decision != "allow" and output.reasoning:
+            if decision != "allow":
                 reasoning = output.reasoning[:1000] if len(output.reasoning) > 1000 else output.reasoning
-                response["message"] = reasoning
+                response["permissionDecisionReason"] = reasoning
             return response
 
         return {}

@@ -256,7 +256,14 @@ class ClaudeHarnessClient:
 
     @staticmethod
     def _format_pre_tool_response(output: HookOutput) -> dict[str, Any]:
-        if output.auto_approve:
+        # Tray decisions override score-based logic
+        if output.tray_decision == "tray-denied":
+            permission_decision = "deny"
+        elif output.tray_decision == "tray-approved":
+            permission_decision = "allow"
+        elif output.tray_decision in ("tray-ignored", "tray-timeout"):
+            permission_decision = "ask"
+        elif output.auto_approve:
             permission_decision = "allow"
         elif output.safety_score >= output.threshold:
             permission_decision = "allow"

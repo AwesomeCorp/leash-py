@@ -35,7 +35,9 @@ try:
         InteractableWindowsToaster,
         Toast,
         ToastActivatedEventArgs,
+        ToastAudio,
         ToastButton,
+        ToastDuration,
     )
 
     HAS_TOASTS = True
@@ -137,34 +139,37 @@ def _build_toast_body(info: NotificationInfo) -> str:
     """Build a detailed multi-line body for the toast notification."""
     lines: list[str] = []
 
+    # Score + suggested action (most important, first line)
+    if info.safety_score is not None:
+        threshold_str = f"/{info.threshold}" if info.threshold is not None else ""
+        action_labels = {"approve": "APPROVE", "deny": "DENY", "review": "NEEDS REVIEW"}
+        action = action_labels.get(info.suggested_action or "", "")
+        score_line = f"Score: {info.safety_score}{threshold_str}"
+        if action:
+            score_line += f"  |  {action}"
+        lines.append(score_line)
+
+    # Tool + request summary
+    if info.tool_name:
+        tool_line = f"Tool: {info.tool_name}"
+        if info.tool_input_summary:
+            tool_line += f" - {info.tool_input_summary[:120]}"
+        lines.append(tool_line)
+    elif info.tool_input_summary:
+        lines.append(f"Request: {info.tool_input_summary[:150]}")
+
     # Folder/repo
     if info.cwd:
         folder = os.path.basename(info.cwd.rstrip("\\/")) or info.cwd
         lines.append(f"Folder: {folder}")
 
-    # Tool request summary
-    if info.tool_input_summary:
-        preview = info.tool_input_summary[:150]
-        lines.append(f"Request: {preview}")
-
-    # Score (prominent)
-    if info.safety_score is not None:
-        threshold_str = f"/{info.threshold}" if info.threshold is not None else ""
-        lines.append(f"Score: {info.safety_score}{threshold_str}")
-
-    # Suggested action
-    if info.suggested_action:
-        action_labels = {"approve": "APPROVE", "deny": "DENY", "review": "NEEDS REVIEW"}
-        lines.append(f"Suggested: {action_labels.get(info.suggested_action, info.suggested_action)}")
-
     # LLM reasoning
     if info.reasoning:
-        reason = info.reasoning[:200]
-        lines.append(f"Reason: {reason}")
+        lines.append(f"Reason: {info.reasoning[:250]}")
 
     # Timeout
     if info.timeout_seconds:
-        lines.append(f"Timeout: {info.timeout_seconds}s")
+        lines.append(f"Expires in {info.timeout_seconds}s")
 
     return "\n".join(lines) if lines else info.body
 
@@ -190,12 +195,22 @@ class WindowsNotificationService:
     def supports_interactive(self) -> bool:
         return self._toaster is not None
 
+    def _make_audio(self, info: NotificationInfo) -> Any:
+        """Create ToastAudio based on notification sound setting."""
+        if not HAS_TOASTS:
+            return None
+        return ToastAudio(silent=not info.sound)
+
     async def show_alert(self, info: NotificationInfo) -> None:
         """Show a passive toast notification (no buttons)."""
         if self._toaster is not None:
             try:
                 body = _build_toast_body(info)
-                toast = Toast([info.title[:200], body[:500]])
+                toast = Toast(
+                    [info.title[:200], body[:500]],
+                    audio=self._make_audio(info),
+                    duration=ToastDuration.Short,
+                )
                 self._toaster.show_toast(toast)
                 return
             except Exception:
@@ -212,7 +227,11 @@ class WindowsNotificationService:
                 logger.debug("Failed to show Windows notification", exc_info=True)
 
     async def show_interactive(self, info: NotificationInfo, timeout: float) -> TrayDecision | None:
-        """Show a toast with Approve/Deny buttons and rich detail."""
+        """Show a toast with Approve/Deny/Ignore buttons and rich detail.
+
+        Clicking the toast body (outside buttons) does NOT dismiss the decision.
+        Only explicit button clicks resolve the future.
+        """
         if self._toaster is None:
             return None
 
@@ -223,28 +242,38 @@ class WindowsNotificationService:
             try:
                 args = event_args.arguments
                 if "action=approve" in args:
-                    loop.call_soon_threadsafe(result_future.set_result, TrayDecision.APPROVE)
+                    loop.call_soon_threadsafe(_set_result, TrayDecision.APPROVE)
                 elif "action=deny" in args:
-                    loop.call_soon_threadsafe(result_future.set_result, TrayDecision.DENY)
-                else:
-                    loop.call_soon_threadsafe(result_future.set_result, None)
+                    loop.call_soon_threadsafe(_set_result, TrayDecision.DENY)
+                elif "action=ignore" in args:
+                    loop.call_soon_threadsafe(_set_result, TrayDecision.IGNORE)
+                # Body click (no action= arg): do nothing, keep waiting
             except Exception:
-                if not result_future.done():
-                    loop.call_soon_threadsafe(result_future.set_result, None)
+                pass
 
         def _on_dismissed(_: Any) -> None:
+            # User swiped away or toast expired — treat as timeout, not a decision
             if not result_future.done():
-                loop.call_soon_threadsafe(result_future.set_result, None)
+                loop.call_soon_threadsafe(_set_result, None)
 
         def _on_failed(_: Any) -> None:
             if not result_future.done():
-                loop.call_soon_threadsafe(result_future.set_result, None)
+                loop.call_soon_threadsafe(_set_result, None)
+
+        def _set_result(value: TrayDecision | None) -> None:
+            if not result_future.done():
+                result_future.set_result(value)
 
         try:
             body = _build_toast_body(info)
-            toast = Toast([info.title[:200], body[:500]])
+            toast = Toast(
+                [info.title[:200], body[:500]],
+                audio=self._make_audio(info),
+                duration=ToastDuration.Long,
+            )
             toast.AddAction(ToastButton("Approve", "action=approve"))
             toast.AddAction(ToastButton("Deny", "action=deny"))
+            toast.AddAction(ToastButton("Ignore", "action=ignore"))
             toast.on_activated = _on_activated
             toast.on_dismissed = _on_dismissed
             toast.on_failed = _on_failed

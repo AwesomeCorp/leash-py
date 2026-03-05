@@ -11,7 +11,7 @@ var chipDefinitions = {
     hookType: ['PermissionRequest', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Stop', 'TrayDecision'],
     toolName: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'],
     category: ['safe', 'cautious', 'risky', 'dangerous'],
-    decision: ['auto-approved', 'denied', 'logged', 'tray-approved', 'tray-denied', 'tray-timeout']
+    decision: ['auto-approved', 'denied', 'logged', 'tray-approved', 'tray-denied', 'tray-ignored', 'tray-timeout']
 };
 
 var activeChipFilters = {};

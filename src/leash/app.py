@@ -27,7 +27,7 @@ def _find_static_dir() -> Path:
     # 1. Check relative to package (development)
     pkg_dir = Path(__file__).resolve().parent
     candidates = [
-        pkg_dir.parent.parent / "static",  # repo root: leash-py/static/
+        pkg_dir.parent.parent / "static",  # repo root: leash/static/
         Path.home() / ".local" / "share" / "leash" / "static",  # installed
     ]
     for d in candidates:

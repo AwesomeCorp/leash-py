@@ -12,17 +12,17 @@ Observe and enforce Claude Code & Copilot CLI permission requests via LLM-based 
 
 ```bash
 # Run directly from GitHub (no install needed)
-uvx --from git+https://github.com/AwesomeCorp/leash-py leash
+uvx --from git+https://github.com/AwesomeCorp/leash leash
 
 # Or install globally
-uv tool install git+https://github.com/AwesomeCorp/leash-py
+uv tool install git+https://github.com/AwesomeCorp/leash
 leash
 ```
 
 ### pip install
 
 ```bash
-pip install git+https://github.com/AwesomeCorp/leash-py.git
+pip install git+https://github.com/AwesomeCorp/leash.git
 leash
 ```
 
@@ -30,19 +30,19 @@ leash
 
 **Windows** (tray icon + toast notifications with approve/deny buttons):
 ```powershell
-pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash-py.git"
+pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash.git"
 leash
 ```
 
 **macOS**:
 ```bash
-pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash-py.git"
+pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash.git"
 leash
 ```
 
 **Linux**:
 ```bash
-pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash-py.git"
+pip install "leash[tray] @ git+https://github.com/AwesomeCorp/leash.git"
 leash
 # Optional: install notify-send and zenity for native notifications
 ```
@@ -50,15 +50,15 @@ leash
 ### From source
 
 ```bash
-git clone https://github.com/AwesomeCorp/leash-py.git
-cd leash-py
+git clone https://github.com/AwesomeCorp/leash.git
+cd leash
 uv sync --all-extras
 uv run leash
 ```
 
 ### From release binary (no Python required)
 
-Download the latest release for your platform from [Releases](https://github.com/AwesomeCorp/leash-py/releases):
+Download the latest release for your platform from [Releases](https://github.com/AwesomeCorp/leash/releases):
 
 | Platform | Download |
 |----------|----------|

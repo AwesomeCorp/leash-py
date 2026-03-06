@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leash — Safety Guardrails for AI Coding Agents</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-card: #12121a;
+    --bg-card-hover: #1a1a28;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --accent: #6366f1;
+    --accent-glow: rgba(99, 102, 241, 0.3);
+    --green: #22c55e;
+    --green-glow: rgba(34, 197, 94, 0.25);
+    --red: #ef4444;
+    --red-glow: rgba(239, 68, 68, 0.25);
+    --yellow: #eab308;
+    --yellow-glow: rgba(234, 179, 8, 0.25);
+    --orange: #f97316;
+    --blue: #3b82f6;
+    --border: #2a2a3a;
+    --code-bg: #1a1a2e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Slide container */
+  .slides-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 80px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .slide.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    transition: width 0.3s ease;
+    z-index: 100;
+  }
+
+  /* Slide counter */
+  .slide-counter {
+    position: fixed;
+    bottom: 24px;
+    right: 32px;
+    font-size: 14px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    z-index: 100;
+  }
+
+  /* Nav hint */
+  .nav-hint {
+    position: fixed;
+    bottom: 24px;
+    left: 32px;
+    font-size: 12px;
+    color: var(--text-dim);
+    opacity: 0.5;
+    z-index: 100;
+  }
+
+  /* Typography */
+  h1 {
+    font-size: 3.2rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 24px;
+  }
+
+  h2 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-bottom: 32px;
+  }
+
+  h3 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--accent);
+  }
+
+  p, li {
+    font-size: 1.25rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .subtitle {
+    font-size: 1.5rem;
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-bottom: 16px;
+  }
+
+  .small-text {
+    font-size: 1rem;
+    color: var(--text-dim);
+  }
+
+  /* Accent text */
+  .accent { color: var(--accent); }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .yellow { color: var(--yellow); }
+  .orange { color: var(--orange); }
+  .blue { color: var(--blue); }
+
+  /* Layout helpers */
+  .full-width { width: 100%; max-width: 1200px; }
+  .text-center { text-align: center; }
+  .text-left { text-align: left; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mt-32 { margin-top: 32px; }
+  .mt-48 { margin-top: 48px; }
+  .mb-16 { margin-bottom: 16px; }
+
+  /* Grid layouts */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  .grid-5 {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: left;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .card h3 { margin-bottom: 12px; }
+  .card p { font-size: 1.05rem; color: var(--text-dim); }
+
+  .card-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  /* Profile cards */
+  .profile-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .profile-card .card-icon { font-size: 2.2rem; margin-bottom: 8px; }
+  .profile-card h3 { font-size: 1.1rem; margin-bottom: 6px; color: var(--text); }
+  .profile-card p { font-size: 0.85rem; }
+  .profile-card .threshold {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 8px;
+    display: block;
+  }
+
+  .profile-card.active-profile {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+
+  /* Code blocks */
+  .code-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    text-align: left;
+    width: 100%;
+    max-width: 900px;
+  }
+
+  .code-block .comment { color: #6a6a8a; }
+  .code-block .keyword { color: #c084fc; }
+  .code-block .string { color: #86efac; }
+  .code-block .number { color: #fbbf24; }
+  .code-block .func { color: #67e8f9; }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  .flow-step {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: center;
+    min-width: 130px;
+    transition: all 0.2s;
+  }
+
+  .flow-step .step-icon { font-size: 1.5rem; display: block; margin-bottom: 6px; }
+  .flow-step .step-label { font-size: 0.9rem; font-weight: 500; }
+  .flow-step .step-detail { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
+
+  .flow-arrow {
+    font-size: 1.5rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* Mode cards */
+  .mode-card {
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: center;
+    transition: all 0.3s;
+  }
+
+  .mode-card .card-icon { font-size: 2.5rem; }
+  .mode-card h3 { font-size: 1.3rem; color: var(--text); margin-bottom: 8px; }
+  .mode-card p { font-size: 0.95rem; }
+
+  .mode-card.mode-observe { border-color: var(--blue); }
+  .mode-card.mode-approve { border-color: var(--yellow); }
+  .mode-card.mode-enforce { border-color: var(--green); }
+
+  .mode-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: var(--text-dim);
+  }
+
+  /* Bullet list */
+  .bullet-list {
+    list-style: none;
+    text-align: left;
+    max-width: 900px;
+  }
+
+  .bullet-list li {
+    position: relative;
+    padding-left: 32px;
+    margin-bottom: 16px;
+    font-size: 1.15rem;
+  }
+
+  .bullet-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .bullet-list li strong { color: var(--text); }
+
+  /* Score bar */
+  .score-bar-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 800px;
+    margin-top: 16px;
+  }
+
+  .score-bar {
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, var(--red) 0%, var(--orange) 30%, var(--yellow) 55%, var(--green) 80%, var(--green) 100%);
+    position: relative;
+    margin: 16px 0;
+  }
+
+  .score-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .score-marker {
+    position: absolute;
+    top: -6px;
+    width: 3px;
+    height: 44px;
+    background: white;
+    border-radius: 2px;
+  }
+
+  .score-marker-label {
+    position: absolute;
+    top: -28px;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Scenario cards */
+  .scenario {
+    background: var(--bg-card);
+    border-left: 4px solid var(--border);
+    border-radius: 0 12px 12px 0;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    width: 100%;
+    max-width: 1000px;
+    text-align: left;
+  }
+
+  .scenario.safe { border-left-color: var(--green); }
+  .scenario.risky { border-left-color: var(--red); }
+  .scenario.cautious { border-left-color: var(--yellow); }
+
+  .scenario-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .scenario-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .scenario-badge.safe { background: var(--green-glow); color: var(--green); }
+  .scenario-badge.risky { background: var(--red-glow); color: var(--red); }
+  .scenario-badge.cautious { background: var(--yellow-glow); color: var(--yellow); }
+
+  .scenario-cmd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+  }
+
+  .scenario-detail {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Tag / badge */
+  .tag {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: var(--accent-glow);
+    color: var(--accent);
+    margin-right: 6px;
+  }
+
+  /* Demo slide */
+  .demo-header {
+    font-size: 4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--accent), #a78bfa, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+
+  .demo-checklist {
+    list-style: none;
+    text-align: left;
+    max-width: 700px;
+  }
+
+  .demo-checklist li {
+    font-size: 1.3rem;
+    padding: 12px 0;
+    padding-left: 40px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .demo-checklist li:last-child { border-bottom: none; }
+
+  .demo-checklist li::before {
+    content: attr(data-num);
+    position: absolute;
+    left: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--accent);
+  }
+
+  /* Title slide special */
+  .title-slide h1 {
+    font-size: 4rem;
+    background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .title-meta {
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin-top: 32px;
+  }
+
+  /* Stat callout */
+  .stat-row {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    margin-top: 24px;
+  }
+
+  .stat-item { text-align: center; }
+
+  .stat-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .stat-label {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Highlight box */
+  .highlight-box {
+    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.08));
+    border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 16px;
+    padding: 28px 36px;
+    max-width: 900px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .highlight-box p {
+    font-size: 1.3rem;
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  /* Risk grid */
+  .risk-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+    text-align: left;
+  }
+
+  .risk-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .risk-text h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .risk-text p {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+  }
+
+  /* Two-col layout for content-heavy slides */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    width: 100%;
+    max-width: 1100px;
+    align-items: start;
+  }
+
+  .two-col .col { text-align: left; }
+
+  /* Feature list with icons */
+  .feature-list {
+    list-style: none;
+    text-align: left;
+  }
+
+  .feature-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+  }
+
+  .feature-list li .feat-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .slide.active > * {
+    animation: fadeInUp 0.5s ease forwards;
+  }
+
+  .slide.active > *:nth-child(2) { animation-delay: 0.1s; }
+  .slide.active > *:nth-child(3) { animation-delay: 0.2s; }
+  .slide.active > *:nth-child(4) { animation-delay: 0.3s; }
+  .slide.active > *:nth-child(5) { animation-delay: 0.4s; }
+
+  /* Presenter notes (hidden by default, visible on N key) */
+  .notes {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0,0,0,0.95);
+    color: var(--text-dim);
+    padding: 16px 32px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    z-index: 200;
+    border-top: 1px solid var(--border);
+    max-height: 30vh;
+    overflow-y: auto;
+  }
+
+  .notes.visible { display: block; }
+
+  .notes-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+<div class="slide-counter" id="slideCounter"></div>
+<div class="nav-hint">Arrow keys or click to navigate &middot; N for speaker notes &middot; F for fullscreen</div>
+
+<div class="slides-container" id="slides">
+
+  <!-- ============ SLIDE 1: TITLE ============ -->
+  <div class="slide title-slide" data-notes="Welcome everyone. Today I'm going to show you Leash — a tool I built to solve a real problem: how do you let AI coding agents be productive while keeping them safe? This talk is about 12-15 minutes, then we'll do a live demo and Q&A.">
+    <h1>Leash</h1>
+    <p class="subtitle">Safety Guardrails for AI Coding Agents</p>
+    <p class="small-text mt-16" style="color: var(--text-dim);">Stay in control without babysitting</p>
+    <p class="title-meta mt-48">Shahab Movahed</p>
+  </div>
+
+  <!-- ============ SLIDE 2: THE PROBLEM ============ -->
+  <div class="slide" data-notes="Let's start with why. Raise your hand if you use Claude Code or Copilot CLI. Now keep your hand up if you've ever had that moment where the agent ran something and you thought 'wait, what just happened?' That's what we're solving.">
+    <h2>The Problem</h2>
+    <p class="subtitle" style="max-width: 800px; text-align: center;">AI agents are powerful — but they run with <strong class="red">your permissions</strong></p>
+
+    <div class="full-width mt-32" style="max-width: 800px;">
+      <div class="risk-item">
+        <span class="risk-icon">&#x1F4A3;</span>
+        <div class="risk-text">
+          <h4>Destructive Commands</h4>
+          <p>A misunderstood prompt can lead to <code>rm -rf</code>, force pushes, or dropped tables</p>
+        </div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">&#x1F440;</span>
+        <div class="risk-text">
+          <h4>Silent Execution</h4>
+          <p>Agents run dozens of commands per session — impossible to review each one manually</p>
+        </div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">&#x26A0;&#xFE0F;</span>
+        <div class="risk-text">
+          <h4>No Graduated Trust</h4>
+          <p>It's all-or-nothing: full auto-approve or constant pop-up interruptions</p>
+        </div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">&#x1F50D;</span>
+        <div class="risk-text">
+          <h4>No Audit Trail</h4>
+          <p>What did the agent do last Tuesday? Which tools did it use? No easy answer today</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 3: WHAT IS LEASH ============ -->
+  <div class="slide" data-notes="Leash is an intelligent safety layer that sits between your AI agent and the actions it wants to take. Think of it like a smart security guard — it watches every tool call, scores it for safety using a dedicated LLM, and makes approve/deny decisions based on your comfort level. Critically, safe operations proceed silently so you're not constantly interrupted.">
+    <h2>What is Leash?</h2>
+    <div class="highlight-box">
+      <p>An intelligent safety layer that <strong class="accent">observes, evaluates, and gates</strong> every action your AI agent takes — so you stay in control without babysitting.</p>
+    </div>
+
+    <div class="grid-3 mt-32">
+      <div class="card">
+        <span class="card-icon">&#x1F9E0;</span>
+        <h3>LLM-Powered Scoring</h3>
+        <p>Every tool call is evaluated by a dedicated LLM. Safe operations pass silently.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#x1F514;</span>
+        <h3>Interactive Notifications</h3>
+        <p>Risky requests surface as toast notifications with Approve / Deny buttons.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#x1F4CA;</span>
+        <h3>Full Visibility</h3>
+        <p>Live dashboard with logs, transcripts, latency stats, and audit reports.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 4: HOW IT WORKS (ARCHITECTURE) ============ -->
+  <div class="slide" data-notes="Here's the flow. Claude Code or Copilot makes a tool call — like running a bash command. That call gets intercepted by a simple curl hook and sent to Leash. Leash routes it to the right handler, which queries an LLM for a safety score from 0-100. That score is compared against your active profile threshold. If it passes — auto-approve. If not — it gets flagged. The whole thing adds about 1-3 seconds of latency for analyzed calls. Safe operations like file reads are near-zero.">
+    <h2>How It Works</h2>
+
+    <div class="flow mt-16">
+      <div class="flow-step">
+        <span class="step-icon">&#x1F916;</span>
+        <span class="step-label">AI Agent</span>
+        <span class="step-detail">Claude / Copilot</span>
+      </div>
+      <span class="flow-arrow">&#x2192;</span>
+      <div class="flow-step">
+        <span class="step-icon">&#x1F517;</span>
+        <span class="step-label">Hook</span>
+        <span class="step-detail">curl POST</span>
+      </div>
+      <span class="flow-arrow">&#x2192;</span>
+      <div class="flow-step" style="border-color: var(--accent);">
+        <span class="step-icon">&#x1F6E1;&#xFE0F;</span>
+        <span class="step-label">Leash</span>
+        <span class="step-detail">FastAPI server</span>
+      </div>
+      <span class="flow-arrow">&#x2192;</span>
+      <div class="flow-step">
+        <span class="step-icon">&#x1F9E0;</span>
+        <span class="step-label">LLM Analysis</span>
+        <span class="step-detail">Safety score 0-100</span>
+      </div>
+      <span class="flow-arrow">&#x2192;</span>
+      <div class="flow-step">
+        <span class="step-icon">&#x2696;&#xFE0F;</span>
+        <span class="step-label">Threshold</span>
+        <span class="step-detail">Profile-based</span>
+      </div>
+      <span class="flow-arrow">&#x2192;</span>
+      <div class="flow-step" style="border-color: var(--green);">
+        <span class="step-icon">&#x2705;</span>
+        <span class="step-label">Decision</span>
+        <span class="step-detail">Approve / Deny / Flag</span>
+      </div>
+    </div>
+
+    <div class="grid-2 mt-32" style="max-width: 900px;">
+      <div class="card" style="padding: 20px;">
+        <h3 style="font-size: 1rem;">Zero Code Changes</h3>
+        <p style="font-size: 0.9rem;">Drop-in curl hooks — no modifications to Claude Code or Copilot needed</p>
+      </div>
+      <div class="card" style="padding: 20px;">
+        <h3 style="font-size: 1rem;">Fail-Safe Design</h3>
+        <p style="font-size: 0.9rem;">Any error returns empty JSON — agent proceeds as normal, never blocks</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 5: THREE ENFORCEMENT MODES ============ -->
+  <div class="slide" data-notes="Leash has three enforcement modes, and you can switch between them with one click on the dashboard. Observe mode just watches and logs — it's where you start. Approve-Only auto-approves safe things but lets uncertain ones fall through to you. Full Enforce mode takes complete control — approving safe, denying dangerous, and showing you interactive notifications for the gray area. Most people start in Observe, see what their agent is doing, then graduate to Approve-Only.">
+    <h2>Three Enforcement Modes</h2>
+    <p class="subtitle text-center">Graduate your trust level as you gain confidence</p>
+
+    <div class="grid-3 mt-24" style="max-width: 1000px; align-items: stretch;">
+      <div class="mode-card mode-observe">
+        <span class="card-icon">&#x1F441;&#xFE0F;</span>
+        <h3>Observe</h3>
+        <p class="small-text">Watch &amp; log everything. Agent runs normally. You learn what it does.</p>
+        <p class="mt-16" style="font-size: 0.85rem;"><span class="tag" style="background: rgba(59,130,246,0.2); color: var(--blue);">Start here</span></p>
+      </div>
+      <div class="mode-card mode-approve">
+        <span class="card-icon">&#x1F44D;</span>
+        <h3>Approve-Only</h3>
+        <p class="small-text">Auto-approve safe operations. Uncertain ones fall through to you.</p>
+        <p class="mt-16" style="font-size: 0.85rem;"><span class="tag" style="background: rgba(234,179,8,0.2); color: var(--yellow);">Recommended</span></p>
+      </div>
+      <div class="mode-card mode-enforce">
+        <span class="card-icon">&#x1F6E1;&#xFE0F;</span>
+        <h3>Enforce</h3>
+        <p class="small-text">Full control. Approve safe, deny dangerous, flag uncertain with tray alerts.</p>
+        <p class="mt-16" style="font-size: 0.85rem;"><span class="tag" style="background: rgba(34,197,94,0.2); color: var(--green);">Full protection</span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 6: SECURITY PROFILES ============ -->
+  <div class="slide" data-notes="Within each enforcement mode, you pick a security profile. These set the threshold for what 'safe enough' means. Trust mode lets almost everything through — good for solo work on a personal project. Moderate is the sweet spot for most teams. Strict is for production environments or when working with sensitive code. Lockdown means nothing is auto-approved — every action needs human approval. Each profile has per-tool thresholds, so bash commands need higher scores than file reads.">
+    <h2>Security Profiles</h2>
+    <p class="subtitle text-center">One click to match your risk tolerance</p>
+
+    <div class="grid-5 mt-24">
+      <div class="profile-card">
+        <span class="card-icon">&#x1F49A;</span>
+        <h3>Trust</h3>
+        <p class="small-text">Solo / personal</p>
+        <span class="threshold green">50</span>
+      </div>
+      <div class="profile-card">
+        <span class="card-icon">&#x1F499;</span>
+        <h3>Permissive</h3>
+        <p class="small-text">Experienced dev</p>
+        <span class="threshold blue">70</span>
+      </div>
+      <div class="profile-card active-profile">
+        <span class="card-icon">&#x1F49C;</span>
+        <h3>Moderate</h3>
+        <p class="small-text">Team default</p>
+        <span class="threshold accent">85</span>
+      </div>
+      <div class="profile-card">
+        <span class="card-icon">&#x1F9E1;</span>
+        <h3>Strict</h3>
+        <p class="small-text">Sensitive code</p>
+        <span class="threshold orange">95</span>
+      </div>
+      <div class="profile-card">
+        <span class="card-icon">&#x2764;&#xFE0F;</span>
+        <h3>Lockdown</h3>
+        <p class="small-text">Full manual</p>
+        <span class="threshold red">100</span>
+      </div>
+    </div>
+
+    <div class="score-bar-container mt-32">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span class="small-text">Safety Score Range</span>
+        <span class="small-text">Higher = more restrictive</span>
+      </div>
+      <div class="score-bar">
+        <div class="score-marker" style="left: 50%;">
+          <span class="score-marker-label" style="color: var(--green);">Trust</span>
+        </div>
+        <div class="score-marker" style="left: 70%;">
+          <span class="score-marker-label" style="color: var(--blue);">Permissive</span>
+        </div>
+        <div class="score-marker" style="left: 85%;">
+          <span class="score-marker-label" style="color: var(--accent);">Moderate</span>
+        </div>
+        <div class="score-marker" style="left: 95%;">
+          <span class="score-marker-label" style="color: var(--orange);">Strict</span>
+        </div>
+      </div>
+      <div class="score-labels">
+        <span>0 — Dangerous</span>
+        <span>50 — Cautious</span>
+        <span>100 — Safe</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 7: LLM SAFETY SCORING ============ -->
+  <div class="slide" data-notes="Let's dig into the scoring. When a tool call comes in, Leash constructs a security-focused prompt and sends it to an LLM. The prompt has hard rules — like 'rm -rf / is always score 0' — and graduated criteria. Read-only commands get bonus points, workspace-scoped operations get bonus points, destructive patterns get penalties. The LLM returns a 0-100 score with reasoning and a category. Scores are clamped to prevent prompt injection attacks. Let me show you some examples.">
+    <h2>LLM Safety Scoring</h2>
+
+    <div class="scenario safe">
+      <div class="scenario-header">
+        <span class="scenario-badge safe">Score: 95 — Auto-approved</span>
+      </div>
+      <div class="scenario-cmd"><code>git status</code></div>
+      <div class="scenario-detail">Read-only, workspace-scoped, no side effects</div>
+    </div>
+
+    <div class="scenario cautious">
+      <div class="scenario-header">
+        <span class="scenario-badge cautious">Score: 72 — Flagged for review</span>
+      </div>
+      <div class="scenario-cmd"><code>npm install some-unknown-package</code></div>
+      <div class="scenario-detail">Modifies node_modules and lockfile, downloads external code</div>
+    </div>
+
+    <div class="scenario risky">
+      <div class="scenario-header">
+        <span class="scenario-badge risky">Score: 15 — Denied</span>
+      </div>
+      <div class="scenario-cmd"><code>git push --force origin main</code></div>
+      <div class="scenario-detail">Destructive, affects shared state, unreversible data loss risk</div>
+    </div>
+
+    <div class="mt-24" style="display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;">
+      <span class="tag">Prompt injection defense</span>
+      <span class="tag">Score clamping (0-100)</span>
+      <span class="tag">Per-tool prompt templates</span>
+      <span class="tag">Category: safe / cautious / risky / dangerous</span>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 8: TRAY NOTIFICATIONS ============ -->
+  <div class="slide" data-notes="Here's one of the coolest features. When Leash encounters an uncertain or denied operation, it doesn't just block silently. You get a native OS notification — a toast on Windows, a dialog on macOS — with the command, the safety score, the reasoning, and Approve/Deny buttons. You click one button and you're done. No need to switch back to your terminal. This works cross-platform: Windows toast notifications, macOS native dialogs, and zenity on Linux.">
+    <h2>Interactive Notifications</h2>
+    <p class="subtitle text-center">Approve or deny from anywhere — no terminal switching</p>
+
+    <div class="grid-2 mt-24" style="max-width: 1000px;">
+      <div class="card" style="border-color: var(--yellow); text-align: center;">
+        <span class="card-icon" style="font-size: 3rem;">&#x1F514;</span>
+        <h3 style="color: var(--yellow);">Uncertain Action</h3>
+        <div style="background: var(--code-bg); border-radius: 8px; padding: 16px; margin-top: 12px; text-align: left;">
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 8px;">Leash Safety Alert</p>
+          <p style="font-size: 0.95rem; font-family: 'JetBrains Mono', monospace;">npm install axios</p>
+          <p style="font-size: 0.85rem; color: var(--yellow); margin-top: 8px;">Score: 72 / 90 threshold</p>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 4px;">External package install</p>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <span style="background: var(--green); color: #000; padding: 6px 20px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">Approve</span>
+            <span style="background: var(--red); color: #fff; padding: 6px 20px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">Deny</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="card" style="padding: 20px;">
+          <h3 style="font-size: 1rem;">&#x1FA9F; Windows</h3>
+          <p style="font-size: 0.9rem;">Native toast notifications with action buttons</p>
+        </div>
+        <div class="card" style="padding: 20px;">
+          <h3 style="font-size: 1rem;">&#x1F34E; macOS</h3>
+          <p style="font-size: 0.9rem;">Native dialog via osascript</p>
+        </div>
+        <div class="card" style="padding: 20px;">
+          <h3 style="font-size: 1rem;">&#x1F427; Linux</h3>
+          <p style="font-size: 0.9rem;">zenity dialogs + notify-send</p>
+        </div>
+        <div class="card" style="padding: 20px;">
+          <h3 style="font-size: 1rem;">&#x23F1;&#xFE0F; Configurable</h3>
+          <p style="font-size: 0.9rem;">Alert on denied, uncertain, or both. Timeout support.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 9: DASHBOARD ============ -->
+  <div class="slide" data-notes="Everything comes together in the web dashboard. You get real-time stats — how many events today, approval rate, average safety score, latency percentiles. Live log streaming with 6-level filters. A full transcript browser that shows hierarchical sessions with token usage. Profile and enforcement mode switching. Hook management. Prompt template editing. All built with vanilla JS — zero npm dependencies, zero build step. Let me show you this live in a moment.">
+    <h2>The Dashboard</h2>
+    <p class="subtitle text-center">Full visibility into every agent action</p>
+
+    <div class="grid-2 mt-24" style="max-width: 1100px;">
+      <div class="col">
+        <ul class="feature-list">
+          <li>
+            <span class="feat-icon">&#x1F4C8;</span>
+            <div>
+              <strong>Real-Time Stats</strong><br>
+              <span class="small-text">Approvals, denials, avg scores, latency (p50/p95/p99)</span>
+            </div>
+          </li>
+          <li>
+            <span class="feat-icon">&#x1F4DC;</span>
+            <div>
+              <strong>Live Log Streaming</strong><br>
+              <span class="small-text">6-level filters: harness, hook type, tool, category, decision, provider</span>
+            </div>
+          </li>
+          <li>
+            <span class="feat-icon">&#x1F4AC;</span>
+            <div>
+              <strong>Transcript Browser</strong><br>
+              <span class="small-text">Hierarchical sessions, token usage, side-by-side diffs</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="col">
+        <ul class="feature-list">
+          <li>
+            <span class="feat-icon">&#x1F39B;&#xFE0F;</span>
+            <div>
+              <strong>One-Click Controls</strong><br>
+              <span class="small-text">Switch profiles, toggle enforcement, install/uninstall hooks</span>
+            </div>
+          </li>
+          <li>
+            <span class="feat-icon">&#x270F;&#xFE0F;</span>
+            <div>
+              <strong>Prompt Editor</strong><br>
+              <span class="small-text">Customize scoring templates with live preview</span>
+            </div>
+          </li>
+          <li>
+            <span class="feat-icon">&#x2699;&#xFE0F;</span>
+            <div>
+              <strong>Configuration UI</strong><br>
+              <span class="small-text">LLM provider, timeouts, rate limits, tray settings</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="small-text mt-24 text-center" style="color: var(--text-dim);">Vanilla HTML/CSS/JS &middot; Zero build step &middot; SSE for real-time updates</p>
+  </div>
+
+  <!-- ============ SLIDE 10: MULTI-PROVIDER SUPPORT ============ -->
+  <div class="slide" data-notes="Leash needs an LLM to do the safety scoring, and you have 5 provider options. Direct Anthropic API is the fastest if you have an API key. Claude CLI and Persistent Claude use the claude command — persistent keeps a long-lived process for faster responses. Copilot CLI uses your existing Copilot subscription. And generic REST lets you plug in any OpenAI-compatible API, including local models. This is all configurable from the dashboard.">
+    <h2>Multi-Provider LLM Support</h2>
+    <p class="subtitle text-center">Use whatever LLM access you already have</p>
+
+    <div class="grid-3 mt-24" style="max-width: 1000px;">
+      <div class="card">
+        <h3 style="font-size: 1rem;">Anthropic API</h3>
+        <p style="font-size: 0.9rem;">Direct HTTP — fastest option</p>
+        <span class="tag mt-16">Requires API key</span>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 1rem;">Claude CLI</h3>
+        <p style="font-size: 0.9rem;">One-shot or persistent process</p>
+        <span class="tag mt-16">Uses existing auth</span>
+      </div>
+      <div class="card">
+        <h3 style="font-size: 1rem;">Copilot CLI</h3>
+        <p style="font-size: 0.9rem;">Piggyback on Copilot subscription</p>
+        <span class="tag mt-16">Zero extra cost</span>
+      </div>
+    </div>
+
+    <div class="highlight-box mt-24" style="max-width: 700px;">
+      <p style="font-size: 1.05rem;"><strong class="accent">Generic REST</strong> — plug in any OpenAI-compatible API, including local models (Ollama, LM Studio, etc.)</p>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 11: SETUP ============ -->
+  <div class="slide" data-notes="Getting started takes about 2 minutes. One command to install, one command to run. Leash auto-installs the hooks, opens the dashboard, and starts in observe mode. You don't need to change anything in your Claude Code or Copilot setup. When you uninstall, hooks are cleanly removed using markers — your own custom hooks are preserved.">
+    <h2>Setup in 2 Minutes</h2>
+
+    <div class="code-block mt-16">
+      <span class="comment"># Option 1: Run directly (no install)</span><br>
+      uvx --from git+https://github.com/AwesomeCorp/leash leash<br><br>
+      <span class="comment"># Option 2: Install with pip</span><br>
+      pip install git+https://github.com/AwesomeCorp/leash.git<br>
+      leash<br><br>
+      <span class="comment"># Option 3: With tray notifications</span><br>
+      pip install <span class="string">"leash[tray] @ git+https://github.com/AwesomeCorp/leash.git"</span><br><br>
+      <span class="comment"># That's it. Hooks auto-install. Dashboard opens. Observe mode by default.</span>
+    </div>
+
+    <div class="stat-row mt-32">
+      <div class="stat-item">
+        <div class="stat-value accent">0</div>
+        <div class="stat-label">Code changes needed</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green">1</div>
+        <div class="stat-label">Command to start</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value blue">&#x221E;</div>
+        <div class="stat-label">Customization depth</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 12: DEMO ============ -->
+  <div class="slide" data-notes="Now let's see it in action. I'll walk through the dashboard, trigger some tool calls in observe mode, switch to approve-only, show the tray notification flow, and look at the transcript browser. Feel free to ask questions as we go.">
+    <div class="demo-header">Live Demo</div>
+    <p class="subtitle">Let's see it in action</p>
+
+    <ol class="demo-checklist mt-32">
+      <li data-num="01">Dashboard overview — stats, profiles, enforcement modes</li>
+      <li data-num="02">Observe mode — watch tool calls get scored in real time</li>
+      <li data-num="03">Switch to Approve-Only — safe calls auto-approve</li>
+      <li data-num="04">Trigger a risky action — tray notification with Approve / Deny</li>
+      <li data-num="05">Transcript browser — session hierarchy and token tracking</li>
+    </ol>
+  </div>
+
+  <!-- ============ SLIDE 13: ARCHITECTURE SUMMARY ============ -->
+  <div class="slide" data-notes="For the more technically curious — here's the full stack. FastAPI backend, vanilla JS frontend, zero npm dependencies. Everything communicates via SSE for real-time updates. The session data is stored as simple JSON files — no database required. The handler system is pluggable, so you can write custom analysis logic. And prompt templates are editable text files, not hardcoded.">
+    <h2>Under the Hood</h2>
+
+    <div class="two-col mt-16">
+      <div class="col">
+        <h3 style="font-size: 1.1rem; color: var(--text);">Backend</h3>
+        <ul class="bullet-list" style="margin-top: 8px;">
+          <li><strong>FastAPI</strong> with auto-discovered routes</li>
+          <li><strong>Async everywhere</strong> — non-blocking I/O</li>
+          <li><strong>Pydantic v2</strong> models with camelCase</li>
+          <li><strong>JSON file storage</strong> — no database</li>
+          <li><strong>SSE streaming</strong> for real-time updates</li>
+          <li><strong>Rate limiting</strong> + input sanitization</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3 style="font-size: 1.1rem; color: var(--text);">Frontend</h3>
+        <ul class="bullet-list" style="margin-top: 8px;">
+          <li><strong>Vanilla HTML/CSS/JS</strong> — zero dependencies</li>
+          <li><strong>Dark / light theme</strong> with CSS variables</li>
+          <li><strong>EventSource</strong> for live log streaming</li>
+          <li><strong>Responsive</strong> grid layouts</li>
+          <li><strong>Keyboard shortcuts</strong> (D for theme)</li>
+          <li><strong>CSV/JSON export</strong> for logs</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-24" style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
+      <span class="tag">Python 3.10+</span>
+      <span class="tag">FastAPI</span>
+      <span class="tag">Uvicorn</span>
+      <span class="tag">httpx</span>
+      <span class="tag">pystray</span>
+      <span class="tag">Pydantic v2</span>
+      <span class="tag">SSE</span>
+      <span class="tag">GitHub Actions CI</span>
+    </div>
+  </div>
+
+  <!-- ============ SLIDE 14: Q&A ============ -->
+  <div class="slide" data-notes="Key things to remember: Leash gives you graduated control over AI agents. It starts safe in observe mode — you can just watch what your agent does. It scores every action with a real LLM. It integrates in minutes with zero code changes. And it's fully open source and extensible.">
+    <h2>Key Takeaways</h2>
+
+    <div class="full-width" style="max-width: 800px;">
+      <ul class="bullet-list mt-16">
+        <li><strong class="accent">Graduated trust</strong> — from Observe to full Enforce, at your pace</li>
+        <li><strong class="green">LLM-powered safety</strong> — every tool call scored 0-100 with reasoning</li>
+        <li><strong class="blue">Zero friction setup</strong> — one command, auto-hooks, no code changes</li>
+        <li><strong class="yellow">Full audit trail</strong> — every decision logged with score, reasoning, and timing</li>
+        <li><strong class="orange">Extensible</strong> — custom profiles, prompt templates, LLM providers, handlers</li>
+      </ul>
+    </div>
+
+    <div class="highlight-box mt-48" style="max-width: 600px;">
+      <p style="font-size: 1.6rem; font-weight: 600;">Questions?</p>
+      <p class="small-text mt-16" style="color: var(--text-dim);">github.com/AwesomeCorp/leash</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes" id="speakerNotes">
+  <div class="notes-label">Speaker Notes</div>
+  <div id="notesContent"></div>
+</div>
+
+<script>
+(function() {
+  const slides = document.querySelectorAll('.slide');
+  const progressBar = document.getElementById('progressBar');
+  const slideCounter = document.getElementById('slideCounter');
+  const notesPanel = document.getElementById('speakerNotes');
+  const notesContent = document.getElementById('notesContent');
+  let current = 0;
+  let notesVisible = false;
+
+  function showSlide(index) {
+    if (index < 0 || index >= slides.length) return;
+    slides[current].classList.remove('active');
+    current = index;
+    slides[current].classList.add('active');
+
+    // Update progress
+    const pct = ((current + 1) / slides.length) * 100;
+    progressBar.style.width = pct + '%';
+    slideCounter.textContent = (current + 1) + ' / ' + slides.length;
+
+    // Update speaker notes
+    const notes = slides[current].getAttribute('data-notes') || 'No notes for this slide.';
+    notesContent.textContent = notes;
+
+    // Update URL hash
+    history.replaceState(null, '', '#' + (current + 1));
+  }
+
+  function next() { showSlide(current + 1); }
+  function prev() { showSlide(current - 1); }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
+      e.preventDefault(); next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault(); prev();
+    } else if (e.key === 'Home') {
+      e.preventDefault(); showSlide(0);
+    } else if (e.key === 'End') {
+      e.preventDefault(); showSlide(slides.length - 1);
+    } else if (e.key === 'n' || e.key === 'N') {
+      notesVisible = !notesVisible;
+      notesPanel.classList.toggle('visible', notesVisible);
+    } else if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    }
+  });
+
+  // Click navigation (left half = prev, right half = next)
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.notes')) return;
+    if (e.clientX > window.innerWidth / 2) next();
+    else prev();
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', (e) => {
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) { diff > 0 ? next() : prev(); }
+  });
+
+  // Init from hash or slide 1
+  const hash = parseInt(location.hash.replace('#', ''));
+  showSlide((hash && hash > 0 && hash <= slides.length) ? hash - 1 : 0);
+})();
+</script>
+</body>
+</html>

@@ -152,6 +152,7 @@ class TranscriptWatcher:
         self._watch_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._harness_clients: list[Any] = []  # set via set_harness_clients
+        self._projects_cache: list[ClaudeProject] | None = None
 
     # -- Harness integration --------------------------------------------------
 
@@ -181,16 +182,45 @@ class TranscriptWatcher:
 
     # -- Project / session discovery ------------------------------------------
 
-    def get_projects(self) -> list[ClaudeProject]:
-        """Discover all projects across all registered harness clients."""
+    def invalidate_projects_cache(self) -> None:
+        """Clear the cached projects so the next get_projects() rescans."""
+        self._projects_cache = None
+
+    async def preload_projects(self) -> None:
+        """Scan transcript directories in a background thread and cache the result.
+
+        Call this at startup so the first user request to the transcripts page
+        doesn't pay the full directory-scan cost.
+        """
+        try:
+            projects = await asyncio.get_event_loop().run_in_executor(
+                None, self._discover_projects_sync,
+            )
+            self._projects_cache = projects
+            session_count = sum(len(p.sessions) for p in projects)
+            logger.info(
+                "Transcript preload complete: %d projects, %d sessions",
+                len(projects), session_count,
+            )
+        except Exception:
+            logger.debug("Background transcript preload failed", exc_info=True)
+
+    def _discover_projects_sync(self) -> list[ClaudeProject]:
+        """Synchronous project discovery across all harness clients."""
         all_projects: list[ClaudeProject] = []
         for client in self._harness_clients:
             try:
                 all_projects.extend(client.discover_projects())
             except Exception:
                 logger.debug("Error discovering projects for %s", getattr(client, "name", "unknown"), exc_info=True)
-
         return self._merge_projects_by_folder(all_projects)
+
+    def get_projects(self) -> list[ClaudeProject]:
+        """Return cached projects if available, otherwise discover and cache."""
+        if self._projects_cache is not None:
+            return self._projects_cache
+        self._projects_cache = self._discover_projects_sync()
+        return self._projects_cache
 
     def get_transcript(self, session_id: str) -> list[TranscriptEntry]:
         """Read all JSONL entries from the transcript file for a given session."""
@@ -280,6 +310,7 @@ class TranscriptWatcher:
                 for _change_type, path_str in changes:
                     if not path_str.endswith(".jsonl"):
                         continue
+                    self._projects_cache = None  # invalidate on any transcript change
                     try:
                         client = self._resolve_client_for_path(path_str, dir_to_client)
                         new_entries = self._read_new_entries(path_str, client)

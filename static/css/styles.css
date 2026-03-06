@@ -775,11 +775,7 @@ nav a:focus-visible {
     border-radius: 50%;
     margin: 0 auto 12px;
     position: relative;
-    background: conic-gradient(
-        var(--color-success) 0deg var(--safe-deg, 0deg),
-        var(--color-warning) var(--safe-deg, 0deg) var(--cautious-deg, 0deg),
-        var(--color-danger) var(--cautious-deg, 0deg) 360deg
-    );
+    background: var(--border-color);
 }
 
 .donut-chart::after {

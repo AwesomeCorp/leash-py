@@ -71,10 +71,10 @@ async def get_stats(request: Request) -> JSONResponse:
 
 @router.get("/api/dashboard/latency")
 async def get_latency_stats(request: Request) -> JSONResponse:
-    """Return hook response latency statistics: overall, per provider, and per session."""
+    """Return hook response latency statistics: overall, per provider, per session, and time series."""
     session_manager = _get_session_manager(request)
     if session_manager is None:
-        return JSONResponse(content={"overall": _empty_latency(), "byProvider": {}, "bySessions": []})
+        return JSONResponse(content={"overall": _empty_latency(), "byProvider": {}, "bySessions": [], "timeSeries": []})
 
     try:
         sessions = await session_manager.get_all_sessions()
@@ -82,6 +82,8 @@ async def get_latency_stats(request: Request) -> JSONResponse:
         all_latencies: list[int] = []
         by_provider: dict[str, list[int]] = {}
         session_stats: list[dict] = []
+        # Time series: collect (timestamp_iso, provider, ms) tuples
+        ts_points: list[tuple[str, str, int]] = []
 
         for s in sessions:
             history = getattr(s, "conversation_history", [])
@@ -95,6 +97,9 @@ async def get_latency_stats(request: Request) -> JSONResponse:
                 all_latencies.append(ms)
                 session_latencies.append(ms)
                 by_provider.setdefault(provider, []).append(ms)
+                ts = getattr(e, "timestamp", None)
+                if ts is not None:
+                    ts_points.append((ts.isoformat(), provider, ms))
 
             if session_latencies:
                 session_stats.append({
@@ -109,6 +114,9 @@ async def get_latency_stats(request: Request) -> JSONResponse:
         # Sort sessions by most recent activity (most events = likely most recent)
         session_stats.sort(key=lambda x: x["count"], reverse=True)
 
+        # Build hourly time series per provider
+        time_series = _build_latency_time_series(ts_points)
+
         return JSONResponse(content={
             "overall": {**_calc_latency(all_latencies), "count": len(all_latencies)},
             "byProvider": {
@@ -116,10 +124,43 @@ async def get_latency_stats(request: Request) -> JSONResponse:
                 for p, lats in by_provider.items()
             },
             "bySessions": session_stats[:20],  # Top 20 sessions
+            "timeSeries": time_series,
         })
     except Exception as exc:
         logger.error("Failed to compute latency stats: %s", exc)
         return JSONResponse(status_code=500, content={"error": "Failed to compute latency stats"})
+
+
+def _build_latency_time_series(
+    points: list[tuple[str, str, int]],
+) -> list[dict]:
+    """Group latency points into hourly buckets per provider.
+
+    Returns a list of ``{"time": iso_hour, "provider": str, "avg": int,
+    "median": int, "p95": int, "count": int}`` sorted by time.
+    """
+    from collections import defaultdict
+
+    buckets: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for ts_iso, provider, ms in points:
+        # Truncate to hour
+        hour = ts_iso[:13] + ":00:00"
+        buckets[(hour, provider)].append(ms)
+
+    result = []
+    for (hour, provider), values in buckets.items():
+        stats = _calc_latency(values)
+        result.append({
+            "time": hour,
+            "provider": provider,
+            "avg": stats["avg"],
+            "median": stats["median"],
+            "p95": stats["p95"],
+            "max": stats["max"],
+            "count": len(values),
+        })
+    result.sort(key=lambda x: x["time"])
+    return result
 
 
 def _empty_latency() -> dict:

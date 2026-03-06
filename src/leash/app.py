@@ -178,6 +178,10 @@ async def lifespan(app: FastAPI):
     app.state.pending_decision_service = pending_decision_svc
     app.state.handler_factory = handler_factory
 
+    # Start transcript watcher and preload project list in background
+    transcript_watcher.start()
+    asyncio.create_task(transcript_watcher.preload_projects())
+
     # Start tray service
     try:
         await tray_svc.start()

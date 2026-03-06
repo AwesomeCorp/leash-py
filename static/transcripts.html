@@ -136,6 +136,12 @@
         .folder-tree-count { font-size: 0.8em; color: var(--text-muted, #888); margin-left: auto; white-space: nowrap; }
         .folder-tree-children { padding-left: 16px; }
         .folder-tree-children.collapsed { display: none; }
+        .calc-tokens-btn {
+            font-size: 0.75em; cursor: pointer; padding: 1px 5px; border-radius: 3px;
+            background: var(--bg-tertiary, #e5e7eb); color: var(--text-muted, #888);
+            margin-left: 4px; user-select: none; flex-shrink: 0;
+        }
+        .calc-tokens-btn:hover { background: var(--accent-primary, #2563eb); color: #fff; }
         .folder-common-prefix { font-size: 0.75em; color: var(--text-muted, #888); font-family: monospace; padding: 4px 8px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #folderDetailHeader {
             background: var(--bg-secondary, #fff); border: 1px solid var(--border-color, #e0e0e0);
@@ -227,7 +233,7 @@
                 <div class="two-panel">
                     <div class="sidebar-panel">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                            <h3 style="margin:0;">Folders</h3>
+                            <h3 style="margin:0;" id="sidebarTitle">Folders</h3>
                             <label class="toggle-btn" style="font-size:0.78em;"><input type="checkbox" id="chkRepoView"> Repo view</label>
                         </div>
                         <div id="projectList" class="project-list">
@@ -304,10 +310,35 @@
             var t = usage.total || {};
             var inp = (t.inputTokens || 0) + (t.cacheCreationTokens || 0) + (t.cacheReadTokens || 0);
             var out = t.outputTokens || 0;
-            return '<span class="token-usage-cell">' +
-                '<span class="token-in" title="Input tokens (incl. cache)">' + formatTokenCount(inp) + ' in</span> ' +
-                '<span class="token-out" title="Output tokens">' + formatTokenCount(out) + ' out</span>' +
+            var tooltip = buildTokenTooltip(usage);
+            return '<span class="token-usage-cell" title="' + escapeHtml(tooltip) + '">' +
+                '<span class="token-in">' + formatTokenCount(inp) + ' in</span> ' +
+                '<span class="token-out">' + formatTokenCount(out) + ' out</span>' +
                 '</span>';
+        }
+
+        function buildTokenTooltip(usage) {
+            if (!usage) return '';
+            var lines = [];
+            var models = usage.models || {};
+            var keys = Object.keys(models);
+            if (keys.length > 0) {
+                for (var i = 0; i < keys.length; i++) {
+                    var m = models[keys[i]];
+                    var shortModel = keys[i].replace('claude-', '').replace(/-\d{8}$/, '');
+                    var mIn = (m.inputTokens || 0) + (m.cacheCreationTokens || 0) + (m.cacheReadTokens || 0);
+                    var mOut = m.outputTokens || 0;
+                    lines.push(shortModel + ': ' + formatTokenCount(mIn) + ' in / ' + formatTokenCount(mOut) + ' out');
+                }
+            }
+            var t = usage.total || {};
+            var totalIn = (t.inputTokens || 0) + (t.cacheCreationTokens || 0) + (t.cacheReadTokens || 0);
+            var totalOut = t.outputTokens || 0;
+            if (lines.length > 0) lines.push('---');
+            lines.push('Total: ' + formatTokenCount(totalIn) + ' in / ' + formatTokenCount(totalOut) + ' out');
+            if (t.cacheCreationTokens) lines.push('Cache write: ' + formatTokenCount(t.cacheCreationTokens));
+            if (t.cacheReadTokens) lines.push('Cache read: ' + formatTokenCount(t.cacheReadTokens));
+            return lines.join('\n');
         }
 
         function renderTokenDetails(usage) {
@@ -328,10 +359,10 @@
             }).join(' ');
         }
 
-        function renderProjectTokenSummary(sessions) {
+        function aggregateTokenUsage(sessions) {
             var total = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+            var models = {};
             var fetched = 0;
-            var sessionCount = sessions.length;
             for (var i = 0; i < sessions.length; i++) {
                 var usage = tokenUsageCache[sessions[i].sessionId];
                 if (usage && usage.total) {
@@ -340,12 +371,29 @@
                     total.cacheCreationTokens += usage.total.cacheCreationTokens || 0;
                     total.cacheReadTokens += usage.total.cacheReadTokens || 0;
                     fetched++;
+                    // Merge per-model
+                    var um = usage.models || {};
+                    var mk = Object.keys(um);
+                    for (var j = 0; j < mk.length; j++) {
+                        var mn = mk[j];
+                        if (!models[mn]) models[mn] = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+                        models[mn].inputTokens += um[mn].inputTokens || 0;
+                        models[mn].outputTokens += um[mn].outputTokens || 0;
+                        models[mn].cacheCreationTokens += um[mn].cacheCreationTokens || 0;
+                        models[mn].cacheReadTokens += um[mn].cacheReadTokens || 0;
+                    }
                 }
             }
-            if (sessionCount === 0) return '';
-            var inp = total.inputTokens + total.cacheCreationTokens + total.cacheReadTokens;
-            var partial = fetched < sessionCount ? ' (' + fetched + '/' + sessionCount + ')' : '';
-            return '<div class="project-tokens">' + formatTokenCount(inp) + ' in / ' + formatTokenCount(total.outputTokens) + ' out' + partial + '</div>';
+            return { total: total, models: models, fetched: fetched, sessionCount: sessions.length };
+        }
+
+        function renderProjectTokenSummary(sessions) {
+            var agg = aggregateTokenUsage(sessions);
+            if (agg.sessionCount === 0) return '';
+            var inp = agg.total.inputTokens + agg.total.cacheCreationTokens + agg.total.cacheReadTokens;
+            var partial = agg.fetched < agg.sessionCount ? ' (' + agg.fetched + '/' + agg.sessionCount + ')' : '';
+            var tooltip = buildTokenTooltip({ total: agg.total, models: agg.models });
+            return '<div class="project-tokens" title="' + escapeHtml(tooltip) + '">' + formatTokenCount(inp) + ' in / ' + formatTokenCount(agg.total.outputTokens) + ' out' + partial + '</div>';
         }
 
         async function fetchTokenUsage(sessionId) {
@@ -508,6 +556,19 @@
         }
 
         var folderTreeIdCounter = 0;
+        var _treeNodeSessions = {}; // treeId -> [sessionObj, ...]
+
+        function collectNodeSessions(node) {
+            var sessions = [];
+            for (var p = 0; p < node.projects.length; p++) {
+                sessions = sessions.concat(node.projects[p].project.sessions || []);
+            }
+            var childKeys = Object.keys(node.children);
+            for (var c = 0; c < childKeys.length; c++) {
+                sessions = sessions.concat(collectNodeSessions(node.children[childKeys[c]]));
+            }
+            return sessions;
+        }
 
         function renderFolderTreeNode(node, depth) {
             if (depth > 50) return '';
@@ -548,6 +609,7 @@
                     var childNode = node.children[childKeys[ci]];
                     var treeId = 'ftree-' + (folderTreeIdCounter++);
                     var agg = getNodeAggregates(childNode);
+                    _treeNodeSessions[treeId] = collectNodeSessions(childNode);
 
                     html += '<div class="folder-tree-node">' +
                         '<div class="folder-tree-label" onclick="toggleFolderTreeNode(\'' + treeId + '\',this)">' +
@@ -555,7 +617,9 @@
                         '<span class="folder-tree-icon">&#128193;</span>' +
                         '<span class="folder-tree-name" title="' + escapeHtml(childKeys[ci]) + '">' + escapeHtml(childKeys[ci]) + '</span>' +
                         '<span class="folder-tree-count">' + agg.sessionCount + ' sess &middot; ' + formatBytes(agg.totalSize) + '</span>' +
+                        '<span class="calc-tokens-btn" onclick="event.stopPropagation();calcTreeNodeTokens(\'' + treeId + '\',this)" title="Calculate total token usage">&#9202;</span>' +
                         '</div>' +
+                        '<div id="tree-tokens-' + treeId + '" style="padding-left:42px;"></div>' +
                         '<div class="folder-tree-children collapsed" id="' + treeId + '">' +
                         renderFolderTreeNode(childNode, depth + 1) +
                         '</div></div>';
@@ -572,6 +636,38 @@
             var isCollapsed = container.classList.contains('collapsed');
             container.classList.toggle('collapsed', !isCollapsed);
             if (toggle) toggle.innerHTML = isCollapsed ? '&#9660;' : '&#9654;';
+        }
+
+        async function calcTreeNodeTokens(treeId, btn) {
+            var sessions = _treeNodeSessions[treeId];
+            if (!sessions || sessions.length === 0) return;
+            btn.textContent = '...';
+            btn.style.pointerEvents = 'none';
+            await fetchAllTokenUsage(sessions);
+            var el = document.getElementById('tree-tokens-' + treeId);
+            if (el) el.innerHTML = renderProjectTokenSummary(sessions);
+            btn.textContent = '\u2714';
+        }
+
+        async function calcRepoTokens(repoIdx, btn) {
+            if (!_lastRepoData) return;
+            var repo = _lastRepoData.repoKeys[repoIdx];
+            var items = repo != null ? _lastRepoData.byRepo[repo] : _lastRepoData.noRepo;
+            if (!items) return;
+            var allSessions = [];
+            items.forEach(function(it) { allSessions = allSessions.concat(it.project.sessions || []); });
+            if (allSessions.length === 0) return;
+            btn.textContent = '...';
+            btn.style.pointerEvents = 'none';
+            await fetchAllTokenUsage(allSessions);
+            var el = document.getElementById('repo-tokens-' + (repo != null ? repoIdx : 'norepo'));
+            if (el) el.innerHTML = renderProjectTokenSummary(allSessions);
+            // Also update individual project cards
+            items.forEach(function(it) {
+                var pEl = document.getElementById('project-tokens-' + it.idx);
+                if (pEl) pEl.innerHTML = renderProjectTokenSummary(it.project.sessions || []);
+            });
+            btn.textContent = '\u2714';
         }
 
         function fillProjectMeta(idx) {
@@ -664,8 +760,9 @@
                     '<span class="folder-tree-name" title="' + escapeHtml(repo) + '">' + escapeHtml(repo) + '</span>' +
                     '<span class="folder-tree-count">' + items.length + ' folder' + (items.length !== 1 ? 's' : '') +
                     ' &middot; ' + totalSessions + ' sess &middot; ' + formatBytes(totalSize) + '</span>' +
+                    '<span class="calc-tokens-btn" onclick="event.stopPropagation();calcRepoTokens(' + ri + ',this)" title="Calculate total token usage">&#9202;</span>' +
                     '</div>' +
-                    (showTokens ? '<div class="project-tokens" id="repo-tokens-' + ri + '" style="padding-left:42px;"></div>' : '') +
+                    '<div class="project-tokens" id="repo-tokens-' + ri + '" style="padding-left:42px;"></div>' +
                     '<div class="folder-tree-children" id="' + treeId + '">';
 
                 // Flat list of folders under this repo
@@ -694,7 +791,9 @@
                     '<span class="folder-tree-icon">&#128193;</span>' +
                     '<span class="folder-tree-name">No Repository</span>' +
                     '<span class="folder-tree-count">' + repoData.noRepo.length + ' folder' + (repoData.noRepo.length !== 1 ? 's' : '') + '</span>' +
+                    '<span class="calc-tokens-btn" onclick="event.stopPropagation();calcRepoTokens(null,this)" title="Calculate total token usage">&#9202;</span>' +
                     '</div>' +
+                    '<div class="project-tokens" id="repo-tokens-norepo" style="padding-left:42px;"></div>' +
                     '<div class="folder-tree-children" id="' + noRepoId + '">';
 
                 for (var ni = 0; ni < repoData.noRepo.length; ni++) {
@@ -753,6 +852,8 @@
                 });
 
                 var useRepo = document.getElementById('chkRepoView') && document.getElementById('chkRepoView').checked;
+                var titleEl = document.getElementById('sidebarTitle');
+                if (titleEl) titleEl.textContent = useRepo ? 'Repositories' : 'Folders';
 
                 if (useRepo) {
                     // Repo view: flat list grouped by repository

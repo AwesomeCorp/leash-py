@@ -9,6 +9,7 @@ import os
 import pkgutil
 import signal
 import sys
+import sysconfig
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -22,31 +23,34 @@ from leash.middleware.security_headers import SecurityHeadersMiddleware
 logger = logging.getLogger(__name__)
 
 
-def _find_static_dir() -> Path:
-    """Locate the static files directory."""
-    # 1. Check relative to package (development)
+def _find_data_dir(name: str) -> Path:
+    """Locate a shared-data directory (e.g. 'static', 'prompts').
+
+    Search order:
+    1. Repo root (development with ``uv run``)
+    2. Venv/install prefix via sysconfig (``uvx``, ``pip install``)
+    3. ~/.local/share/leash/ (legacy fallback)
+    """
     pkg_dir = Path(__file__).resolve().parent
     candidates = [
-        pkg_dir.parent.parent / "static",  # repo root: leash/static/
-        Path.home() / ".local" / "share" / "leash" / "static",  # installed
-    ]
-    for d in candidates:
-        if d.is_dir():
-            return d
-    return candidates[0]  # fallback even if missing
-
-
-def _find_prompts_dir() -> Path:
-    """Locate the prompts directory."""
-    pkg_dir = Path(__file__).resolve().parent
-    candidates = [
-        pkg_dir.parent.parent / "prompts",
-        Path.home() / ".local" / "share" / "leash" / "prompts",
+        pkg_dir.parent.parent / name,
+        Path(sysconfig.get_path("data")) / "share" / "leash" / name,
+        Path.home() / ".local" / "share" / "leash" / name,
     ]
     for d in candidates:
         if d.is_dir():
             return d
     return candidates[0]
+
+
+def _find_static_dir() -> Path:
+    """Locate the static files directory."""
+    return _find_data_dir("static")
+
+
+def _find_prompts_dir() -> Path:
+    """Locate the prompts directory."""
+    return _find_data_dir("prompts")
 
 
 def _discover_routers(app: FastAPI) -> None:

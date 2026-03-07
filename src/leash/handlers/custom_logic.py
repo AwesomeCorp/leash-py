@@ -52,6 +52,14 @@ class CustomLogicHandler:
     ) -> HookOutput:
         logger.info("Session started: %s", input.session_id)
         context_parts: list[str] = []
+        protection_message = None
+
+        if _get_config_bool(config, "showProtectionMessage", default=True):
+            protection_message = _get_config_str(
+                config,
+                "protectionMessage",
+                default="Leash protection is active for this session.",
+            )
 
         if _get_config_bool(config, "loadProjectContext") and input.cwd:
             project_ctx = _load_project_context(input.cwd)
@@ -68,7 +76,8 @@ class CustomLogicHandler:
             safety_score=0,
             reasoning="Session initialized",
             category="session-start",
-            system_message="\n".join(context_parts) if context_parts else None,
+            system_message=protection_message,
+            additional_context="\n".join(context_parts) if context_parts else None,
         )
 
     async def _handle_session_end(
@@ -146,4 +155,12 @@ def _get_config_bool(config: HandlerConfig, key: str, *, default: bool = False) 
         return value
     if isinstance(value, str):
         return value.lower() in ("true", "1", "yes")
+    return default
+
+
+def _get_config_str(config: HandlerConfig, key: str, *, default: str) -> str:
+    """Read a string value from the handler config."""
+    value = config.config.get(key)
+    if isinstance(value, str) and value.strip():
+        return value
     return default

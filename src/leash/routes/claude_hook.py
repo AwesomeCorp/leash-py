@@ -33,6 +33,10 @@ PASSTHROUGH_TOOLS: set[str] = {
 _NO_OPINION = JSONResponse(content={})
 
 
+def _is_decision_event(hook_event_name: str) -> bool:
+    return hook_event_name in {"PermissionRequest", "PreToolUse"}
+
+
 def _get_harness_client(request: Request) -> Any:
     registry = getattr(request.app.state, "harness_client_registry", None)
     if registry is not None:
@@ -247,15 +251,6 @@ async def handle_claude_hook(
         if enforcement_svc is not None:
             mode = getattr(enforcement_svc, "mode", "observe")
 
-        # If observe mode AND analysis disabled, just log
-        analyze_in_observe = getattr(app_config, "analyze_in_observe_mode", True) if app_config else True
-        if mode == "observe" and not analyze_in_observe:
-            await _try_log_event(
-                session_manager, harness_client, trigger_svc, console_status, adaptive_svc,
-                hook_input, None, None,
-            )
-            return _NO_OPINION
-
         # Find matching handler
         handler = None
         if config_manager is not None:
@@ -285,6 +280,15 @@ async def handle_claude_hook(
                 return _NO_OPINION
         elif tool_name in PASSTHROUGH_TOOLS:
             logger.debug("Passthrough tool %s - skipping analysis", tool_name)
+            await _try_log_event(
+                session_manager, harness_client, trigger_svc, console_status, adaptive_svc,
+                hook_input, None, handler,
+            )
+            return _NO_OPINION
+
+        analyze_in_observe = getattr(app_config, "analyze_in_observe_mode", True) if app_config else True
+        handler_mode = getattr(handler, "mode", "log-only") if handler is not None else "log-only"
+        if mode == "observe" and not analyze_in_observe and handler_mode in {"llm-analysis", "llm-validation"}:
             await _try_log_event(
                 session_manager, harness_client, trigger_svc, console_status, adaptive_svc,
                 hook_input, None, handler,
@@ -324,6 +328,16 @@ async def handle_claude_hook(
                 session_manager, harness_client, trigger_svc, console_status, adaptive_svc,
                 hook_input, None, handler,
             )
+            return _NO_OPINION
+
+        hook_event_name = getattr(hook_input, "hook_event_name", "")
+        if not _is_decision_event(hook_event_name):
+            await _try_log_event(
+                session_manager, harness_client, trigger_svc, console_status, adaptive_svc,
+                hook_input, output, handler,
+            )
+            if harness_client is not None:
+                return JSONResponse(content=harness_client.format_response(event, output))
             return _NO_OPINION
 
         # Decision logic based on enforcement mode + tray integration

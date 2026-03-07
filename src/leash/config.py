@@ -153,6 +153,21 @@ def create_default_configuration() -> Configuration:
                 enabled=True,
                 handlers=[HandlerConfig(name="stop-logger", mode="log-only")],
             ),
+            "SessionStart": HookEventConfig(
+                enabled=True,
+                handlers=[
+                    HandlerConfig(
+                        name="session-start",
+                        matcher="*",
+                        mode="custom-logic",
+                        config={
+                            "showProtectionMessage": True,
+                            "loadProjectContext": True,
+                            "checkGitStatus": True,
+                        },
+                    )
+                ],
+            ),
         },
     )
 

@@ -64,6 +64,8 @@ def mock_llm_client() -> AsyncMock:
 def app(tmp_config_path: Path):
     """A FastAPI test application."""
     application = create_app(config_path=str(tmp_config_path))
+    application.state.cli_no_browser = True
+    application.state.cli_no_hooks = True
     return application
 
 

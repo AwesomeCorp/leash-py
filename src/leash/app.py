@@ -82,33 +82,36 @@ async def lifespan(app: FastAPI):
     app.state.prompts_dir = prompts_dir
 
     # --- Initialize all services ---
-    from leash.services.session_manager import SessionManager
-    from leash.services.enforcement_service import EnforcementService
-    from leash.services.hook_installer import HookInstaller
-    from leash.services.copilot_hook_installer import CopilotHookInstaller
-    from leash.services.prompt_template_service import PromptTemplateService
-    from leash.services.prompt_builder import PromptBuilder
-    from leash.services.profile_service import ProfileService
     from leash.services.adaptive_threshold_service import AdaptiveThresholdService
-    from leash.services.insights_engine import InsightsEngine
     from leash.services.audit_report_generator import AuditReportGenerator
-    from leash.services.trigger_service import TriggerService
     from leash.services.console_status_service import ConsoleStatusService
-    from leash.services.terminal_output_service import TerminalOutputService
-    from leash.services.transcript_watcher import TranscriptWatcher
-    from leash.services.llm_client_provider import LLMClientProvider
-    from leash.services.hook_handler_factory import HookHandlerFactory
-    from leash.services.tray.null_services import NullTrayService, NullNotificationService
-    from leash.services.tray.pending_decision import PendingDecisionService
+    from leash.services.copilot_hook_installer import CopilotHookInstaller
+    from leash.services.enforcement_service import EnforcementService
     from leash.services.harness.claude import ClaudeHarnessClient
     from leash.services.harness.copilot import CopilotHarnessClient
     from leash.services.harness.registry import HarnessClientRegistry
+    from leash.services.hook_handler_factory import HookHandlerFactory
+    from leash.services.hook_installer import HookInstaller
+    from leash.services.insights_engine import InsightsEngine
+    from leash.services.llm_client_provider import LLMClientProvider
+    from leash.services.profile_service import ProfileService
+    from leash.services.prompt_builder import PromptBuilder
+    from leash.services.prompt_template_service import PromptTemplateService
+    from leash.services.session_manager import SessionManager
+    from leash.services.terminal_output_service import TerminalOutputService
+    from leash.services.transcript_watcher import TranscriptWatcher
+    from leash.services.tray.null_services import NullNotificationService, NullTrayService
+    from leash.services.tray.pending_decision import PendingDecisionService
+    from leash.services.trigger_service import TriggerService
+    from leash.session_start_hook import build_service_url, persist_launch_metadata
 
     # Core services — use actual constructor signatures
     storage_dir = config.session.storage_dir
+    bind_host = getattr(app.state, "cli_host", None) or config.server.host
+    bind_port = getattr(app.state, "cli_port", None) or config.server.port
     session_mgr = SessionManager(storage_dir=storage_dir, max_history_size=config.session.max_history_per_session)
     enforcement_svc = EnforcementService(config_manager=config_mgr)
-    service_url = f"http://{config.server.host}:{config.server.port}"
+    service_url = build_service_url(bind_host, bind_port)
     hook_installer = HookInstaller(config_manager=config_mgr, service_url=service_url)
     copilot_hook_installer = CopilotHookInstaller(service_url=service_url, config_manager=config_mgr)
     prompt_template_svc = PromptTemplateService(prompts_dir=prompts_dir)
@@ -116,7 +119,11 @@ async def lifespan(app: FastAPI):
     await profile_svc.initialize()
     adaptive_threshold_svc = AdaptiveThresholdService()
     insights_engine = InsightsEngine(adaptive_service=adaptive_threshold_svc, session_manager=session_mgr)
-    audit_report_gen = AuditReportGenerator(session_manager=session_mgr, adaptive_service=adaptive_threshold_svc, profile_service=profile_svc)
+    audit_report_gen = AuditReportGenerator(
+        session_manager=session_mgr,
+        adaptive_service=adaptive_threshold_svc,
+        profile_service=profile_svc,
+    )
     trigger_svc = TriggerService(config_manager=config_mgr)
     console_status_svc = ConsoleStatusService(enforcement_service=enforcement_svc)
     terminal_output_svc = TerminalOutputService()
@@ -137,7 +144,11 @@ async def lifespan(app: FastAPI):
     notification_svc = NullNotificationService()
     if config.tray.enabled and sys.platform == "win32":
         try:
-            from leash.services.tray.windows import WindowsTrayService, WindowsNotificationService
+            from leash.services.tray.windows import (
+                WindowsNotificationService,
+                WindowsTrayService,
+            )
+
             tray_svc = WindowsTrayService(dashboard_url=service_url)
             notification_svc = WindowsNotificationService(
                 tray_service=tray_svc,
@@ -182,6 +193,12 @@ async def lifespan(app: FastAPI):
     app.state.pending_decision_service = pending_decision_svc
     app.state.handler_factory = handler_factory
 
+    if not getattr(app.state, "cli_no_hooks", False):
+        try:
+            persist_launch_metadata(bind_host, bind_port, config_path=config_path)
+        except Exception:
+            logger.warning("Failed to persist launch metadata for SessionStart hooks", exc_info=True)
+
     # Start transcript watcher and preload project list in background
     transcript_watcher.start()
     asyncio.create_task(transcript_watcher.preload_projects())
@@ -199,6 +216,13 @@ async def lifespan(app: FastAPI):
     # Apply CLI args
     if getattr(app.state, "cli_enforce", False):
         await enforcement_svc.set_mode("enforce")
+
+    if not getattr(app.state, "cli_no_hooks", False):
+        try:
+            hook_installer.install()
+            logger.info("Claude hooks installed on startup")
+        except Exception:
+            logger.warning("Failed to install Claude hooks on startup", exc_info=True)
 
     # Install a force-exit handler: second Ctrl+C kills immediately.
     # On Windows, uvicorn's signal handling can fail to trigger lifespan
@@ -221,8 +245,7 @@ async def lifespan(app: FastAPI):
         signal.signal(signal.SIGINT, _force_exit_handler)
         signal.signal(signal.SIGTERM, _force_exit_handler)
 
-    logger.info("Leash started - port %d, enforcement: %s",
-                config.server.port, enforcement_svc.mode)
+    logger.info("Leash started - port %d, enforcement: %s", bind_port, enforcement_svc.mode)
     yield
 
     _shutting_down = True

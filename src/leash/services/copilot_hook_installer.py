@@ -6,15 +6,18 @@ import json
 import logging
 import os
 import platform
+import shlex
 import stat
 from pathlib import Path
 from typing import Any
+
+from leash.session_start_hook import build_session_hook_command
 
 logger = logging.getLogger(__name__)
 
 SCRIPT_MARKER = "# copilot-analyzer"
 
-COPILOT_EVENTS = ("preToolUse", "postToolUse")
+COPILOT_EVENTS = ("preToolUse", "postToolUse", "sessionStart")
 
 
 class CopilotHookInstaller:
@@ -80,7 +83,11 @@ class CopilotHookInstaller:
         Maps Copilot camelCase event names to the PascalCase names used in hookHandlers config.
         """
         # Copilot event -> config key mapping
-        event_map = {"preToolUse": "PreToolUse", "postToolUse": "PostToolUse"}
+        event_map = {
+            "preToolUse": "PreToolUse",
+            "postToolUse": "PostToolUse",
+            "sessionStart": "SessionStart",
+        }
 
         if self._config_manager is None:
             return list(COPILOT_EVENTS)
@@ -179,17 +186,30 @@ class CopilotHookInstaller:
     def _write_bash_script(self, hooks_dir: Path, event_name: str) -> None:
         """Generate a bash hook script for the given event."""
         script_path = hooks_dir / f"{event_name}.sh"
-        content = (
-            "#!/bin/bash\n"
-            f"{SCRIPT_MARKER}\n"
-            f"# Copilot CLI hook script for {event_name}\n"
-            "# Reads JSON from stdin, sends to Leash service, outputs response\n"
-            "\n"
-            "INPUT=$(cat)\n"
-            f'echo "$INPUT" | curl -sS -X POST "{self._service_url}/api/hooks/copilot?event={event_name}" \\\n'
-            '  -H "Content-Type: application/json" \\\n'
-            "  -d @- 2>/dev/null || echo '{}'\n"
-        )
+        if event_name == "sessionStart":
+            command = shlex.join(build_session_hook_command("copilot", event_name, self._service_url))
+            content = (
+                "#!/bin/bash\n"
+                f"{SCRIPT_MARKER}\n"
+                f"# Copilot CLI hook script for {event_name}\n"
+                "set -euo pipefail\n"
+                "INPUT=$(cat)\n"
+                f"if ! printf '%s' \"$INPUT\" | {command}; then\n"
+                "  echo '{}'\n"
+                "fi\n"
+            )
+        else:
+            content = (
+                "#!/bin/bash\n"
+                f"{SCRIPT_MARKER}\n"
+                f"# Copilot CLI hook script for {event_name}\n"
+                "# Reads JSON from stdin, sends to Leash service, outputs response\n"
+                "\n"
+                "INPUT=$(cat)\n"
+                f'echo "$INPUT" | curl -sS -X POST "{self._service_url}/api/hooks/copilot?event={event_name}" \\\n'
+                '  -H "Content-Type: application/json" \\\n'
+                "  -d @- 2>/dev/null || echo '{}'\n"
+            )
         script_path.write_text(content, encoding="utf-8")
 
         # Make executable on Unix
@@ -203,24 +223,50 @@ class CopilotHookInstaller:
     def _write_powershell_script(self, hooks_dir: Path, event_name: str) -> None:
         """Generate a PowerShell hook script for the given event."""
         script_path = hooks_dir / f"{event_name}.ps1"
-        content = (
-            f"{SCRIPT_MARKER}\n"
-            f"# Copilot CLI hook script for {event_name}\n"
-            "# Reads JSON from stdin, sends to Leash service, outputs response\n"
-            "\n"
-            "try {\n"
-            "    $inputData = [Console]::In.ReadToEnd()\n"
-            f'    $response = Invoke-RestMethod -Uri "{self._service_url}/api/hooks/copilot?event={event_name}" `\n'
-            "        -Method POST `\n"
-            '        -ContentType "application/json" `\n'
-            "        -Body $inputData `\n"
-            "        -ErrorAction SilentlyContinue\n"
-            "    $response | ConvertTo-Json -Compress\n"
-            "} catch {\n"
-            "    Write-Output '{}'\n"
-            "}\n"
-        )
+        if event_name == "sessionStart":
+            command = build_session_hook_command("copilot", event_name, self._service_url)
+            args_literal = ",\n".join(self._quote_powershell_arg(arg) for arg in command)
+            content = (
+                f"{SCRIPT_MARKER}\n"
+                f"# Copilot CLI hook script for {event_name}\n"
+                "try {\n"
+                "    $inputData = [Console]::In.ReadToEnd()\n"
+                "    $command = @(\n"
+                f"{args_literal}\n"
+                "    )\n"
+                "    $response = $inputData | & $command[0] $command[1..($command.Length - 1)] | Out-String\n"
+                "    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($response)) {\n"
+                "        Write-Output '{}'\n"
+                "    } else {\n"
+                "        Write-Output $response.TrimEnd()\n"
+                "    }\n"
+                "} catch {\n"
+                "    Write-Output '{}'\n"
+                "}\n"
+            )
+        else:
+            content = (
+                f"{SCRIPT_MARKER}\n"
+                f"# Copilot CLI hook script for {event_name}\n"
+                "# Reads JSON from stdin, sends to Leash service, outputs response\n"
+                "\n"
+                "try {\n"
+                "    $inputData = [Console]::In.ReadToEnd()\n"
+                f'    $response = Invoke-RestMethod -Uri "{self._service_url}/api/hooks/copilot?event={event_name}" `\n'
+                "        -Method POST `\n"
+                '        -ContentType "application/json" `\n'
+                "        -Body $inputData `\n"
+                "        -ErrorAction SilentlyContinue\n"
+                "    $response | ConvertTo-Json -Compress\n"
+                "} catch {\n"
+                "    Write-Output '{}'\n"
+                "}\n"
+            )
         script_path.write_text(content, encoding="utf-8")
+
+    @staticmethod
+    def _quote_powershell_arg(arg: str) -> str:
+        return "        '" + arg.replace("'", "''") + "'"
 
     def _write_hooks_json(self, hooks_dir: Path, enabled_events: list[str] | None = None) -> None:
         """Generate or update hooks.json with our hook entries."""

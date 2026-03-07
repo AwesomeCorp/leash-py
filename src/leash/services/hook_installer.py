@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shlex
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from leash.session_start_hook import build_session_hook_command
 
 if TYPE_CHECKING:
     from leash.config import ConfigurationManager
@@ -59,6 +64,8 @@ class HookInstaller:
         # Step 1: Remove ALL our old hooks (by marker) to prevent duplication
         self._remove_our_hooks(hooks)
 
+        session_start_installed = False
+
         # Step 2: Add one curl hook per enabled event type
         # Server-side routing handles handler matching, so we only need
         # one hook entry per event type that pipes stdin JSON to our API.
@@ -72,17 +79,23 @@ class HookInstaller:
                 continue
 
             arr: list[Any] = hooks.get(event_name, [])
-
-            command = (
-                f'curl -sS -X POST "{self._service_url}/api/hooks/claude?event={event_name}" '
-                f'-H "Content-Type: application/json" -d @- {HOOK_MARKER}'
-            )
+            if event_name == "SessionStart":
+                command = self._build_session_start_command()
+                session_start_installed = True
+            else:
+                command = (
+                    f'curl -sS -X POST "{self._service_url}/api/hooks/claude?event={event_name}" '
+                    f'-H "Content-Type: application/json" -d @- {HOOK_MARKER}'
+                )
 
             arr.append({
                 "hooks": [{"type": "command", "command": command}],
             })
 
             hooks[event_name] = arr
+
+        if not session_start_installed:
+            self._remove_session_start_script()
 
         doc["hooks"] = hooks
         self._cleanup_empty_hooks(doc)
@@ -93,6 +106,7 @@ class HookInstaller:
     def uninstall(self) -> None:
         """Remove hooks marked with the leash marker."""
         logger.debug("Uninstalling Claude hooks")
+        self._remove_session_start_script()
 
         if not self._settings_path.exists():
             logger.debug("Settings file not found, nothing to uninstall")
@@ -112,6 +126,15 @@ class HookInstaller:
         except Exception as e:
             logger.error("Failed to uninstall hooks from %s: %s", self._settings_path, e)
             raise
+
+    def _build_session_start_command(self) -> str:
+        script_path = self._write_session_start_script()
+        if os.name == "nt":
+            return (
+                f'powershell -ExecutionPolicy Bypass -NoProfile -File "{script_path}" '
+                f"{HOOK_MARKER}"
+            )
+        return f"bash {shlex.quote(str(script_path))} {HOOK_MARKER}"
 
     def _load_settings(self) -> dict[str, Any]:
         """Load settings.json from disk."""
@@ -182,3 +205,72 @@ class HookInstaller:
 
         if not hooks:
             doc.pop("hooks", None)
+
+    def _write_session_start_script(self) -> Path:
+        script_path = self._get_session_start_script_path()
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        command = build_session_hook_command("claude", "SessionStart", self._service_url)
+
+        if os.name == "nt":
+            content = self._build_powershell_session_start_script(command)
+        else:
+            content = self._build_bash_session_start_script(command)
+
+        script_path.write_text(content, encoding="utf-8")
+        if os.name != "nt":
+            current_mode = script_path.stat().st_mode
+            script_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return script_path
+
+    @staticmethod
+    def _build_bash_session_start_script(command: list[str]) -> str:
+        return (
+            "#!/bin/bash\n"
+            f"{HOOK_MARKER}\n"
+            "set -euo pipefail\n"
+            "INPUT=$(cat)\n"
+            f"if ! printf '%s' \"$INPUT\" | {shlex.join(command)}; then\n"
+            "  echo '{}'\n"
+            "fi\n"
+        )
+
+    @staticmethod
+    def _build_powershell_session_start_script(command: list[str]) -> str:
+        args_literal = ",\n".join(HookInstaller._quote_powershell_arg(arg) for arg in command)
+        return (
+            f"{HOOK_MARKER}\n"
+            "try {\n"
+            "    $inputData = [Console]::In.ReadToEnd()\n"
+            "    $command = @(\n"
+            f"{args_literal}\n"
+            "    )\n"
+            "    $response = $inputData | & $command[0] $command[1..($command.Length - 1)] | Out-String\n"
+            "    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($response)) {\n"
+            "        Write-Output '{}'\n"
+            "    } else {\n"
+            "        Write-Output $response.TrimEnd()\n"
+            "    }\n"
+            "} catch {\n"
+            "    Write-Output '{}'\n"
+            "}\n"
+        )
+
+    @staticmethod
+    def _quote_powershell_arg(arg: str) -> str:
+        return "        '" + arg.replace("'", "''") + "'"
+
+    @staticmethod
+    def _get_session_start_script_path() -> Path:
+        suffix = ".ps1" if os.name == "nt" else ".sh"
+        return Path.home() / ".leash" / "hooks" / f"claude-session-start{suffix}"
+
+    def _remove_session_start_script(self) -> None:
+        script_path = self._get_session_start_script_path()
+        if not script_path.exists():
+            return
+        try:
+            raw = script_path.read_text(encoding="utf-8")
+            if HOOK_MARKER in raw:
+                script_path.unlink()
+        except OSError:
+            logger.debug("Failed to remove SessionStart script at %s", script_path, exc_info=True)

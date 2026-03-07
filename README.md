@@ -19,6 +19,8 @@ uv tool install git+https://github.com/AwesomeCorp/leash
 leash
 ```
 
+On the first interactive launch, Leash opens a small console installer so you can pick a security profile and enforcement mode before it installs hooks and starts.
+
 ### pip install
 
 ```bash
@@ -80,14 +82,14 @@ chmod +x leash
 ## Quick Start
 
 ```bash
-leash                    # Start once (auto-installs Claude hooks and records auto-start metadata)
+leash                    # First interactive run shows setup, installs hooks, and records auto-start metadata
 leash --enforce          # Start in enforcement mode
 leash --no-hooks         # Start without installing hooks
 leash --port 8080        # Custom port (default: 5050)
 leash --no-browser       # Don't open browser on startup
 ```
 
-On first manual startup, Leash records how it was launched and installs Claude hooks. After that, SessionStart hooks can bring Leash back up automatically on later Claude/Copilot sessions if they are configured and Leash is not already running, and Claude SessionStart shows a message that protection is active. Settings (enforcement mode, security profile, LLM analysis toggle) persist across sessions.
+On the first interactive startup, Leash saves the selected security profile and enforcement mode, records how it was launched, and installs Claude hooks. After that, SessionStart hooks can bring Leash back up automatically on later Claude/Copilot sessions if they are configured and Leash is not already running, and Claude SessionStart shows a message that protection is active. Settings (enforcement mode, security profile, LLM analysis toggle) persist across sessions.
 
 ## How It Works
 

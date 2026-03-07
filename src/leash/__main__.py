@@ -7,6 +7,8 @@ import sys
 
 import uvicorn
 
+from leash.installer import run_console_installer, should_run_installer
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
@@ -37,11 +39,21 @@ def main(argv: list[str] | None = None) -> None:
             )
         )
 
+    installer_ran = False
+    if should_run_installer(args.config):
+        run_console_installer(
+            config_path=args.config,
+            no_hooks=args.no_hooks,
+            profile_default="moderate",
+            enforcement_default="enforce" if args.enforce else "observe",
+        )
+        installer_ran = True
+
     # Store CLI args for the app lifespan to pick up
     import leash.app as app_module
 
     app = app_module.create_app(config_path=args.config)
-    app.state.cli_enforce = args.enforce
+    app.state.cli_enforce = args.enforce and not installer_ran
     app.state.cli_host = args.host
     app.state.cli_no_hooks = args.no_hooks
     app.state.cli_no_browser = args.no_browser

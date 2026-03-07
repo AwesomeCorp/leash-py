@@ -19,6 +19,11 @@ def _default_config_path() -> Path:
     return Path.home() / ".leash" / "config.json"
 
 
+def resolve_config_path(config_path: str | Path | None = None) -> Path:
+    """Resolve a user-provided config path or return the default path."""
+    return Path(config_path).expanduser() if config_path else _default_config_path()
+
+
 def _prompts_dir() -> str:
     return str(Path.home() / ".leash" / "prompts")
 
@@ -176,7 +181,7 @@ class ConfigurationManager:
     """Loads, saves, and provides access to the Leash configuration."""
 
     def __init__(self, config_path: str | Path | None = None, config: Configuration | None = None):
-        self._config_path = Path(config_path) if config_path else _default_config_path()
+        self._config_path = resolve_config_path(config_path)
         self._configuration = config or create_default_configuration()
 
     async def load(self) -> Configuration:

@@ -6,6 +6,7 @@ import json
 import logging
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,7 +67,15 @@ def persist_launch_metadata(host: str, port: int, config_path: str | None = None
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    # Atomic write: write to temp file then rename to avoid corruption on crash
+    fd, tmp_path_str = tempfile.mkstemp(dir=metadata_path.parent, suffix=".tmp")
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        Path(tmp_path_str).replace(metadata_path)
+    except BaseException:
+        Path(tmp_path_str).unlink(missing_ok=True)
+        raise
 
 
 def load_launch_metadata(metadata_path: Path | None = None) -> dict[str, Any] | None:
@@ -187,6 +196,13 @@ def start_background_process(command: list[str]) -> bool:
         return False
 
 
+_VALID_PROVIDERS = {"claude", "copilot"}
+_VALID_EVENTS = {
+    "SessionStart", "SessionEnd", "PreToolUse", "PostToolUse",
+    "PostToolUseFailure", "PermissionRequest", "UserPromptSubmit", "Stop",
+}
+
+
 def forward_hook_request(
     service_url: str,
     provider: str,
@@ -195,6 +211,13 @@ def forward_hook_request(
     timeout_seconds: float = _DEFAULT_HOOK_TIMEOUT_SECONDS,
 ) -> str | None:
     """Forward the original SessionStart payload to the running Leash service."""
+    if provider not in _VALID_PROVIDERS:
+        logger.warning("Invalid hook provider: %s", provider)
+        return None
+    if event not in _VALID_EVENTS:
+        logger.warning("Invalid hook event: %s", event)
+        return None
+
     url = f"{service_url}/api/hooks/{provider}?event={event}"
     payload = raw_input.encode("utf-8") if raw_input else b"{}"
     req = request.Request(

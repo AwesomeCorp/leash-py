@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -288,9 +289,10 @@ async def handle_copilot_hook(
             except Exception:
                 pass
 
-        # Apply profile-based threshold
+        # Apply profile-based threshold (copy to avoid mutating shared config)
         if profile_svc is not None:
             active_profile = profile_svc.get_active_profile_key()
+            handler = copy.copy(handler)
             handler.threshold = handler.get_threshold_for_profile(active_profile)
             if active_profile == "lockdown":
                 handler.auto_approve = False

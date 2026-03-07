@@ -48,8 +48,10 @@ class TestConfigurationManager:
     def test_default_config_has_handlers(self):
         """Default config should have built-in handlers."""
         config = create_default_configuration()
-        assert "PermissionRequest" in config.hook_handlers
-        assert len(config.hook_handlers["PermissionRequest"].handlers) > 0
+        assert "PreToolUse" in config.hook_handlers
+        assert len(config.hook_handlers["PreToolUse"].handlers) > 0
+        assert "SessionStart" in config.hook_handlers
+        assert len(config.hook_handlers["SessionStart"].handlers) > 0
 
     def test_get_handlers_for_hook(self):
         """Should return matching handlers for a hook event."""

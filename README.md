@@ -80,14 +80,14 @@ chmod +x leash
 ## Quick Start
 
 ```bash
-leash                    # Start (auto-installs hooks, opens browser)
+leash                    # Start once (auto-installs Claude hooks and records auto-start metadata)
 leash --enforce          # Start in enforcement mode
 leash --no-hooks         # Start without installing hooks
 leash --port 8080        # Custom port (default: 5050)
 leash --no-browser       # Don't open browser on startup
 ```
 
-On startup: loads config &rarr; installs hooks &rarr; starts at `http://localhost:5050` &rarr; opens browser. Settings (enforcement mode, security profile, LLM analysis toggle) persist across sessions.
+On first manual startup, Leash records how it was launched and installs Claude hooks. After that, SessionStart hooks can bring Leash back up automatically on later Claude/Copilot sessions if they are configured and Leash is not already running, and Claude SessionStart shows a message that protection is active. Settings (enforcement mode, security profile, LLM analysis toggle) persist across sessions.
 
 ## How It Works
 
@@ -107,6 +107,8 @@ On startup, Leash writes to `~/.claude/settings.json`:
 ```
 
 The `# leash` comment is a marker for clean uninstall (only removes our hooks, not yours).
+
+Leash also installs a SessionStart hook. It checks the configured local port, starts Leash in the background when needed, waits for `/health`, and then forwards the original session-start payload so Claude can display the protection-on message.
 
 ### Enforcement Modes
 

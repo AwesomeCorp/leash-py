@@ -17,6 +17,7 @@ class HookOutput(BaseModel):
     category: str = "unknown"
     threshold: int = 0
     system_message: str | None = None
+    additional_context: str | None = None
     interrupt: bool = False
     elapsed_ms: int = 0
     tray_decision: str | None = None

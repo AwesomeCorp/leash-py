@@ -57,6 +57,8 @@ class ClaudeHarnessClient:
 
     def format_response(self, hook_event: str, output: HookOutput) -> dict[str, Any]:
         """Format a HookOutput into the JSON structure Claude Code expects."""
+        if hook_event == "SessionStart":
+            return self._format_session_start_response(output)
         if hook_event == "PermissionRequest":
             return self._format_permission_response(output)
         if hook_event == "PreToolUse":
@@ -284,8 +286,9 @@ class ClaudeHarnessClient:
 
     @staticmethod
     def _format_post_tool_response(output: HookOutput) -> dict[str, Any]:
-        if output.system_message:
-            context = output.system_message[:500] if len(output.system_message) > 500 else output.system_message
+        context = output.additional_context or output.system_message
+        if context:
+            context = context[:500] if len(context) > 500 else context
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",
@@ -293,3 +296,25 @@ class ClaudeHarnessClient:
                 }
             }
         return {}
+
+    @staticmethod
+    def _format_session_start_response(output: HookOutput) -> dict[str, Any]:
+        response: dict[str, Any] = {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+            }
+        }
+
+        if output.additional_context:
+            context = (
+                output.additional_context[:500]
+                if len(output.additional_context) > 500
+                else output.additional_context
+            )
+            response["hookSpecificOutput"]["additionalContext"] = context
+
+        if output.system_message:
+            message = output.system_message[:500] if len(output.system_message) > 500 else output.system_message
+            response["systemMessage"] = message
+
+        return response

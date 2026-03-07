@@ -24,6 +24,7 @@ _EVENT_MAP: dict[str, str] = {
     "postToolUse": "PostToolUse",
     "preToolUseFailure": "PreToolUse",
     "postToolUseFailure": "PostToolUseFailure",
+    "sessionStart": "SessionStart",
 }
 
 

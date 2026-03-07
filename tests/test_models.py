@@ -87,6 +87,7 @@ class TestHookOutput:
         assert out.category == "unknown"
         assert out.threshold == 0
         assert out.system_message is None
+        assert out.additional_context is None
         assert out.interrupt is False
         assert out.elapsed_ms == 0
 

@@ -208,7 +208,7 @@ def _extract_json_from_output(output: str) -> str | None:
         except json.JSONDecodeError:
             pass
 
-    return candidates[0] if candidates else None
+    return None
 
 
 def _extract_json_by_brace_counting(output: str, start_idx: int) -> str | None:

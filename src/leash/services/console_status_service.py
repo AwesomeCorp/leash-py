@@ -18,6 +18,28 @@ if TYPE_CHECKING:
 _FIXED_LINES = 5
 
 
+def _enable_ansi_on_windows() -> None:
+    """Enable ANSI escape sequence processing on Windows 10+.
+
+    Without this, raw escape codes are printed as visible text in cmd.exe
+    and PowerShell.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        # STD_OUTPUT_HANDLE = -11
+        handle = kernel32.GetStdHandle(-11)
+        # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+    except Exception:
+        pass  # Pre-Win10 or no console attached
+
+
 def _terminal_size() -> tuple[int, int]:
     """Return (columns, rows) of the terminal, with safe fallbacks."""
     try:
@@ -52,6 +74,8 @@ class ConsoleStatusService:
         *,
         hooks_installed: bool = False,
     ) -> None:
+        _enable_ansi_on_windows()
+
         self._enforcement = enforcement_service
         self._hooks_installed = hooks_installed
 

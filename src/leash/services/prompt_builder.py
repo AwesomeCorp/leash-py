@@ -99,6 +99,9 @@ def _build_replacements(
         "WORKSPACE": cwd or "",
         "SESSION_HISTORY": session_context or "",
         "TOOL_NAME": tool_name or "",
+        "TOOL_INPUT": json.dumps(ti) if ti else "",
+        "TOOL_RESPONSE": str(ti.get("response", ti.get("tool_response", ""))),
+        "ERROR": str(ti.get("error", "")),
         "URL": str(ti.get("url", "")),
         "OPERATION": str(ti.get("operation", tool_name or "")),
         "KNOWN_SAFE_COMMANDS": "",  # Filled from config at a higher level if available

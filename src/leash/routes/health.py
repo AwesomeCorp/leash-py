@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 
 from leash import __version__
 
@@ -30,16 +30,23 @@ async def get_health() -> JSONResponse:
     )
 
 
+async def _deferred_shutdown() -> None:
+    """Send SIGINT after a brief delay, executed as a background task
+    so the HTTP response is fully sent first."""
+    await asyncio.sleep(0.3)
+    signal.raise_signal(signal.SIGINT)
+
+
 @router.post("/api/shutdown")
 async def shutdown() -> JSONResponse:
     """Initiate graceful server shutdown.
 
-    Schedules SIGINT after a short delay so the HTTP response can be
-    sent back to the client before the process begins shutting down.
+    Uses a BackgroundTask so the HTTP response is fully sent before
+    the signal fires.  ``signal.raise_signal`` is used instead of
+    ``os.kill`` for correct cross-platform behavior.
     """
     logger.info("Shutdown requested via API")
-
-    loop = asyncio.get_running_loop()
-    loop.call_later(0.5, os.kill, os.getpid(), signal.SIGINT)
-
-    return JSONResponse(content={"status": "shutting_down"})
+    return JSONResponse(
+        content={"status": "shutting_down"},
+        background=BackgroundTask(_deferred_shutdown),
+    )

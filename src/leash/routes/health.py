@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import os
 import signal
+import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from starlette.background import BackgroundTask
 
 from leash import __version__
 
@@ -30,23 +30,27 @@ async def get_health() -> JSONResponse:
     )
 
 
-async def _deferred_shutdown() -> None:
-    """Send SIGINT after a brief delay, executed as a background task
-    so the HTTP response is fully sent first."""
-    await asyncio.sleep(0.3)
-    signal.raise_signal(signal.SIGINT)
+def _send_shutdown_signal() -> None:
+    """Send SIGINT to the current process from a non-event-loop thread.
+
+    This runs on a ``threading.Timer`` so the HTTP response is fully sent
+    before the signal fires.  Sending from a separate thread ensures the
+    ``KeyboardInterrupt`` raised by the signal handler interrupts the main
+    event loop from the outside, triggering proper uvicorn shutdown.
+    """
+    os.kill(os.getpid(), signal.SIGINT)
 
 
 @router.post("/api/shutdown")
 async def shutdown() -> JSONResponse:
     """Initiate graceful server shutdown.
 
-    Uses a BackgroundTask so the HTTP response is fully sent before
-    the signal fires.  ``signal.raise_signal`` is used instead of
-    ``os.kill`` for correct cross-platform behavior.
+    Schedules a SIGINT via ``threading.Timer`` so the signal arrives from
+    outside the asyncio event loop.  This lets the ``KeyboardInterrupt``
+    properly interrupt uvicorn's main loop and trigger lifespan shutdown.
     """
     logger.info("Shutdown requested via API")
-    return JSONResponse(
-        content={"status": "shutting_down"},
-        background=BackgroundTask(_deferred_shutdown),
-    )
+    timer = threading.Timer(0.5, _send_shutdown_signal)
+    timer.daemon = True
+    timer.start()
+    return JSONResponse(content={"status": "shutting_down"})

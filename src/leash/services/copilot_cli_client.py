@@ -191,9 +191,10 @@ class CopilotCliClient(LLMClientBase):
 
 
 def parse_text_response(output: str) -> LLMResponse:
-    """Parse unstructured text from Copilot into a structured LLMResponse.
+    """Parse Copilot output into a structured LLMResponse.
 
-    Uses keyword heuristics since Copilot doesn't return JSON.
+    First attempts JSON parsing (the ACP persistent client returns structured
+    JSON).  Falls back to keyword heuristics for plain-text output.
     """
     if not output or not output.strip():
         return LLMResponse(
@@ -210,6 +211,19 @@ def parse_text_response(output: str) -> LLMResponse:
             reasoning="Copilot output exceeded maximum size limit",
         )
 
+    # Try structured JSON parsing first (used by ACP persistent client)
+    from leash.services.claude_cli_client import parse_response
+
+    json_result = parse_response(output)
+    if json_result.success:
+        return json_result
+
+    # Fall back to keyword heuristics for plain-text output
+    return _parse_text_heuristic(output)
+
+
+def _parse_text_heuristic(output: str) -> LLMResponse:
+    """Keyword-based heuristic scoring for unstructured text output."""
     lower = output.lower()
 
     danger_count = sum(1 for k in _DANGEROUS_KEYWORDS if k in lower)

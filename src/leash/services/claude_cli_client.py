@@ -231,7 +231,12 @@ def _extract_json_by_brace_counting(output: str, start_idx: int) -> str | None:
 
 
 def _parse_json_to_response(json_string: str) -> LLMResponse:
-    """Parse a JSON string into an LLMResponse."""
+    """Parse a JSON string into an LLMResponse.
+
+    Detects nested JSON: if the ``reasoning`` field itself contains a JSON
+    object with a ``safetyScore`` key, the inner values are used instead.
+    This handles LLMs that wrap the real response inside the reasoning field.
+    """
     try:
         data = json.loads(json_string)
     except json.JSONDecodeError as exc:
@@ -242,14 +247,32 @@ def _parse_json_to_response(json_string: str) -> LLMResponse:
     except (KeyError, ValueError, TypeError) as exc:
         return _create_error_response(f"Missing or invalid safetyScore: {exc}")
 
+    reasoning = str(data.get("reasoning", "No reasoning provided"))
+    category = str(data.get("category", "unknown"))
+
+    # Detect nested JSON in reasoning — the LLM sometimes wraps the real
+    # response inside the reasoning field as a JSON string.
+    if reasoning.lstrip().startswith("{") and "safetyScore" in reasoning:
+        try:
+            inner = json.loads(reasoning)
+            if isinstance(inner, dict) and "safetyScore" in inner:
+                try:
+                    safety_score = int(inner["safetyScore"])
+                except (ValueError, TypeError):
+                    pass
+                else:
+                    if "category" in inner:
+                        category = str(inner["category"])
+                    if "reasoning" in inner:
+                        reasoning = str(inner["reasoning"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     # Clamp to valid range
     safety_score = max(0, min(safety_score, 100))
 
-    category = str(data.get("category", "unknown"))
     if category not in _VALID_CATEGORIES:
         category = "unknown"
-
-    reasoning = str(data.get("reasoning", "No reasoning provided"))
 
     return LLMResponse(
         success=True,

@@ -4,14 +4,9 @@ Tray behavior by mode:
 - **Enforce**: No tray at all. LLM result is enforced silently.
 - **Observe**: Tray only if ``show_in_observe`` is True (default False).
   Only fires when LLM analysis is enabled. Informational only.
-- **Approve-only**: Tray if ``show_in_approve_only`` is True (default True).
-
-Within observe/approve-only, the score determines what happens:
-- score >= threshold (approved): silent, no tray.
-- score <= 0 (clearly dangerous): passive alert (no buttons), auto-deny in
-  approve-only.
-- 0 < score < threshold (uncertain): interactive toast with Approve/Deny
-  buttons so the user can override.
+- **Approve-only**: Can only approve safe requests. Unsafe requests are
+  silently ignored (empty response) so the CLI asks the user normally.
+  Tray shows informational alerts if enabled but never denies.
 """
 
 from __future__ import annotations
@@ -137,7 +132,20 @@ async def make_tray_decision(
             return JSONResponse(content=harness_client.format_response(event, output))
         return _NO_OPINION
 
-    # ── Not approved: decide based on score ──
+    # ── Approve-only: never deny, return no response for unsafe requests ──
+    if mode == "approve-only":
+        # Show informational tray alert so the user knows, but never deny
+        if tray_active and notification_svc is not None:
+            level = NotificationLevel.DANGER if score <= 0 else NotificationLevel.WARNING
+            info = _build_info(tool_name, output, cwd, provider, None, level, sound)
+            info.title = f"Leash: {tool_name or 'unknown'} (score {score})"
+            try:
+                await notification_svc.show_alert(info)
+            except Exception:
+                logger.debug("Failed to show alert for %s", tool_name, exc_info=True)
+        return _NO_OPINION
+
+    # ── Not approved: decide based on score (observe / enforce fallthrough) ──
 
     if score <= 0:
         # Clearly dangerous: informational alert (no buttons)
@@ -149,14 +157,8 @@ async def make_tray_decision(
             except Exception:
                 logger.debug("Failed to show denial alert for %s", tool_name, exc_info=True)
 
-        if mode == "approve-only":
-            # Deny in approve-only
-            if harness_client is not None:
-                return JSONResponse(content=harness_client.format_response(event, output))
-            return _NO_OPINION
-        else:
-            # Observe: do nothing
-            return _NO_OPINION
+        # Observe: do nothing
+        return _NO_OPINION
 
     # Score > 0 and < threshold: uncertain — interactive toast
     if tray_active and notification_svc is not None and pending_decision_svc is not None:

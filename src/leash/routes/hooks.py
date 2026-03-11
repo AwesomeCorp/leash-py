@@ -38,7 +38,7 @@ async def get_status(request: Request) -> JSONResponse:
         try:
             installed = hook_installer.is_installed()
         except Exception:
-            pass
+            logger.warning("Failed to check hook installation status", exc_info=True)
 
     enforced = False
     enforcement_mode = "observe"
@@ -51,7 +51,7 @@ async def get_status(request: Request) -> JSONResponse:
         try:
             copilot_user_installed = copilot_installer.is_user_installed()
         except Exception:
-            pass
+            logger.warning("Failed to check copilot installation status", exc_info=True)
 
     hooks_user_uninstalled = False
     copilot_hooks_user_uninstalled = False
@@ -62,7 +62,7 @@ async def get_status(request: Request) -> JSONResponse:
             hooks_user_uninstalled = app_config.hooks_user_uninstalled
             copilot_hooks_user_uninstalled = app_config.copilot_hooks_user_uninstalled
         except Exception:
-            pass
+            logger.warning("Failed to read config for hook status", exc_info=True)
 
     return JSONResponse(
         content={
@@ -174,6 +174,7 @@ async def session_start_status(request: Request) -> JSONResponse:
         installed = hook_installer.is_session_start_installed()
         return JSONResponse(content={"installed": installed})
     except Exception:
+        logger.warning("Failed to check SessionStart status", exc_info=True)
         return JSONResponse(content={"installed": False})
 
 

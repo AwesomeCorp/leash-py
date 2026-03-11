@@ -244,7 +244,7 @@ class PersistentClaudeStreamClient(LLMClientBase):
             try:
                 model = self._config_manager.get_configuration().llm.model or model
             except Exception:
-                pass
+                logger.warning("[claude-stream] Failed to read model from config", exc_info=True)
 
         args = [
             "--output-format", "stream-json",
@@ -276,7 +276,7 @@ class PersistentClaudeStreamClient(LLMClientBase):
                     if configured_cmd:
                         cmd = configured_cmd
                 except Exception:
-                    pass
+                    logger.warning("[claude-stream] Failed to read command from config", exc_info=True)
 
             args = self._build_command_args()
             cmd, args = _resolve_command_for_platform(cmd, args)
@@ -342,7 +342,8 @@ class PersistentClaudeStreamClient(LLMClientBase):
         """Track consecutive failures, killing the process after too many."""
         self._consecutive_failures += 1
         if self._consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
-            asyncio.create_task(self._kill_process())
+            task = asyncio.create_task(self._kill_process())
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     async def _kill_process(self) -> None:
         """Terminate the persistent process."""
@@ -363,7 +364,10 @@ class PersistentClaudeStreamClient(LLMClientBase):
                         try:
                             await asyncio.wait_for(proc.wait(), timeout=2.0)
                         except asyncio.TimeoutError:
-                            pass
+                            logger.error(
+                                "[claude-stream] Process PID %s did not exit after kill — zombie process may remain",
+                                proc.pid,
+                            )
             except ProcessLookupError:
                 pass
             except Exception as exc:

@@ -374,7 +374,7 @@ class AcpClientBase(LLMClientBase):
                 prefixes = llm_cfg.prompt_prefixes
                 suffixes = llm_cfg.prompt_suffixes
             except Exception:
-                pass
+                logger.warning("[%s] Failed to read prompt sequences from config", self._label, exc_info=True)
         return prefixes, suffixes
 
 
@@ -425,6 +425,7 @@ class AcpClientBase(LLMClientBase):
                 _, ok = await self._acp_prompt(proc, session_id, prefix, deadline)
                 if not ok:
                     logger.warning("[%s] Prefix did not complete: %s", self._label, prefix)
+                    self._session_id = "initialized"
                     self._increment_failures_and_maybe_kill()
                     return None
 
@@ -436,6 +437,8 @@ class AcpClientBase(LLMClientBase):
                 elapsed_ms = int((time.monotonic() - start) * 1000)
                 self._push_terminal(f"persistent-{self._label}", "stderr", f"[PID {pid}] Timeout — no result after {elapsed_ms}ms (session: {session_ms}ms)")
                 logger.warning("[%s] No result after %dms (session: %dms)", self._label, elapsed_ms, session_ms)
+                # Force fresh session on next attempt (current session may be stale)
+                self._session_id = "initialized"
                 self._increment_failures_and_maybe_kill()
                 return None
 
@@ -551,7 +554,9 @@ class AcpClientBase(LLMClientBase):
     def _increment_failures_and_maybe_kill(self) -> None:
         self._consecutive_failures += 1
         if self._consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
-            self._kill_task = asyncio.create_task(self._kill_process())
+            task = asyncio.create_task(self._kill_process())
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            self._kill_task = task
 
     async def _kill_process(self) -> None:
         proc = self._process
@@ -572,7 +577,10 @@ class AcpClientBase(LLMClientBase):
                         try:
                             await asyncio.wait_for(proc.wait(), timeout=2.0)
                         except asyncio.TimeoutError:
-                            pass
+                            logger.error(
+                                "[%s] Process PID %s did not exit after kill — zombie process may remain",
+                                self._label, proc.pid,
+                            )
             except ProcessLookupError:
                 pass
             except Exception as exc:

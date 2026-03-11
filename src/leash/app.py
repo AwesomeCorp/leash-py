@@ -253,6 +253,11 @@ async def lifespan(app: FastAPI):
                 logger.warning("npx warmup exited %d: %s", proc.returncode, stderr.decode(errors="replace").strip()[:200])
         except asyncio.TimeoutError:
             logger.warning("npx warmup timed out after 120s")
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
         except Exception:
             logger.debug("npx warmup failed", exc_info=True)
 
@@ -326,7 +331,7 @@ async def lifespan(app: FastAPI):
                         return
                 console_status_svc.log(msg)
             except Exception:
-                pass
+                self.handleError(record)
 
     _console_handler = _ConsoleLogHandler()
     _console_handler.setLevel(logging.INFO)

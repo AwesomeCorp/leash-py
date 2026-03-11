@@ -243,9 +243,7 @@ async def _handle_unsafe_with_tray(
                 else:
                     pending_decision_svc.cancel(decision_id)
 
-                applied = _apply_tray_result(result, output, harness_client, event, mode)
-                if applied is not None:
-                    return applied
+                return _apply_tray_result(result, output, harness_client, event, mode)
             except Exception:
                 logger.debug("Interactive toast failed for %s", tool_name, exc_info=True)
 
@@ -254,13 +252,11 @@ async def _handle_unsafe_with_tray(
             try:
                 await notification_svc.show_alert(info)
             except Exception:
-                pass
+                logger.warning("Failed to show passive alert for %s", tool_name, exc_info=True)
 
             try:
                 result = await future
-                applied = _apply_tray_result(result, output, harness_client, event, mode)
-                if applied is not None:
-                    return applied
+                return _apply_tray_result(result, output, harness_client, event, mode)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pending_decision_svc.cancel(decision_id)
             except Exception:
@@ -280,6 +276,7 @@ def _default_unsafe_response(
     enforce      -> DENY via harness_client
     """
     if mode == "enforce" and harness_client is not None:
+        output.auto_approve = False
         return JSONResponse(content=harness_client.format_response(event, output))
     return _NO_OPINION
 
@@ -290,8 +287,12 @@ def _apply_tray_result(
     harness_client: Any,
     event: str,
     mode: str,
-) -> JSONResponse | None:
-    """Convert a tray decision into a response. Returns None if no action taken."""
+) -> JSONResponse:
+    """Convert a tray decision into a JSONResponse.
+
+    Always returns a response: approve, deny, or _NO_OPINION.
+    Timeout behavior is mode-specific (enforce=deny, approve-only=no-opinion).
+    """
     if result == TrayDecision.APPROVE and harness_client is not None:
         output.auto_approve = True
         output.tray_decision = "tray-approved"

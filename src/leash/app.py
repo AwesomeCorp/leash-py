@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI):
 
     # Warm up npx package cache for persistent Claude ACP (background, non-blocking)
     async def _warmup_acp_package() -> None:
+        proc = None
         try:
             provider = config.llm.provider or "anthropic-api"
             if provider != "claude-persistent":
@@ -253,11 +254,12 @@ async def lifespan(app: FastAPI):
                 logger.warning("npx warmup exited %d: %s", proc.returncode, stderr.decode(errors="replace").strip()[:200])
         except asyncio.TimeoutError:
             logger.warning("npx warmup timed out after 120s")
-            try:
-                proc.kill()
-                await proc.wait()
-            except Exception:
-                pass
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
         except Exception:
             logger.debug("npx warmup failed", exc_info=True)
 

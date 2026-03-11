@@ -293,14 +293,18 @@ def _apply_tray_result(
     Always returns a response: approve, deny, or _NO_OPINION.
     Timeout behavior is mode-specific (enforce=deny, approve-only=no-opinion).
     """
-    if result == TrayDecision.APPROVE and harness_client is not None:
+    if result == TrayDecision.APPROVE:
         output.auto_approve = True
         output.tray_decision = "tray-approved"
-        return JSONResponse(content=harness_client.format_response(event, output))
+        if harness_client is not None:
+            return JSONResponse(content=harness_client.format_response(event, output))
+        return _NO_OPINION
 
-    if result == TrayDecision.DENY and harness_client is not None:
+    if result == TrayDecision.DENY:
         output.tray_decision = "tray-denied"
-        return JSONResponse(content=harness_client.format_response(event, output))
+        if harness_client is not None:
+            return JSONResponse(content=harness_client.format_response(event, output))
+        return _NO_OPINION
 
     if result == TrayDecision.IGNORE:
         output.tray_decision = "tray-ignored"

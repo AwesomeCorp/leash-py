@@ -358,8 +358,11 @@ async def handle_claude_hook(
 
         # Observe mode: always return _NO_OPINION regardless of tray result.
         # LLM analysis ran above for logging, but we never approve/deny.
+        # Mark as "logged" so the log entry doesn't say "denied".
         if mode == "observe":
             response = _NO_OPINION
+            if output is not None:
+                output.tray_decision = "logged"
 
         # Log after tray decision so the log reflects any user override
         await _try_log_event(
